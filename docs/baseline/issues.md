@@ -385,3 +385,80 @@ this repo decides.
 No label leakage at evaluation: `training/evaluate.py:122` calls `model(**inputs)`
 without `y`; `y` reaches only the validator BCE target (`models/validator.py:140-142`,
 `training/losses.py:115-133`).
+
+---
+
+## 9. Issues added by the issue dossier (2026-10-17)
+
+Full analysis, mathematics, fixes and tests: `docs/baseline/issue_dossier.md`.
+Fix-order placement: dossier §3 (A8 with A3; E10/E11 with E6; B11 in Phase 3
+as measurement only; D5 in Phase 4; C6/C7 for the supervisor).
+
+### A8 — Ablation grid resumes stale checkpoints from earlier sessions
+- **Category:** A · **Severity:** High · **Status:** open
+- **Evidence:** v46 run cell 39: `[RESUME A1_baseline_s42] Resuming from epoch 8 …
+  [SKIP] A1_baseline_s42 already finished 8 epochs.`; A3 "Resuming from epoch 7",
+  P0 "Resuming from epoch 6", F0 resumed; all from
+  `/content/drive/MyDrive/qAIR_V45/ckpt/`. Code: `training/ablations.py:227,265-272`.
+- **Proposed fix:** shared with A3 (provenance in checkpoints; refuse mismatches),
+  plus a per-version, per-dataset checkpoint directory.
+- **Verify:** a grid run in a directory holding a checkpoint with a different
+  commit raises.
+
+### B11 — Calibration is neither controlled nor measured with adequate power
+- **Category:** B · **Severity:** Low–Medium · **Status:** open
+- **Evidence:** ECE 0.161 → 0.385 (cell 27), but a calibrated model has an
+  expected 15-bin ECE of 0.241 at n=20 (`scripts/verify_dossier_math.py`
+  check 10), so the observation is weak. Mean confidence is not logged
+  (`training/evaluate.py:212-242`).
+- **Proposed fix:** log confidence vs accuracy per epoch; ECE with a bootstrap CI
+  and a reliability diagram on full splits.
+- **Verify:** at n=570 ECE is either clearly above the ≈0.05 noise floor or not.
+
+### E10 — Training is non-deterministic by default
+- **Category:** E · **Severity:** Medium · **Status:** open
+- **Evidence:** `[SEED] Set to 42 (deterministic=False)` (cells 10, 39);
+  `training/seed.py:8`; no caller passes `deterministic=True` (grep).
+- **Proposed fix:** `deterministic=True` for reported runs; record it in the manifest.
+- **Verify:** two same-seed T4 smoke runs give identical predictions.
+
+### E11 — Environment not pinned; resolver conflicts in the v46 run
+- **Category:** E · **Severity:** Medium · **Status:** open
+- **Evidence:** cell 8: `huggingface-hub 0.33.4` incompatible with
+  `diffusers 0.39.0` / `gradio 6.20.0`; cell 10: PennyLane warns about JAX
+  0.7.2 > 0.6.2; `requirements.txt:1` leaves torch unpinned.
+- **Proposed fix:** pin torch; record `pip freeze` in the manifest (E6); install
+  reported runs into a clean environment.
+- **Verify:** identical `pip freeze` hash across installs; no resolver errors in the log.
+
+### D5 — Attack hypotheses do not reliably attack
+- **Category:** D · **Severity:** High · **Status:** open
+- **Evidence:** cell 43: the attack on the correct option "Carbon dioxide" reads
+  "Plants absorb carbon dioxide (CO2) through their stomata … This absorption
+  process is crucial…" (it supports). Polarity is assigned by mode, not content
+  (`models/generator.py:347`). The rate is unmeasured.
+- **Proposed fix:** audit 100 attacks and report the non-compliance rate η with a
+  CI. Filter or regenerate only with approval.
+- **Verify:** the audit; the dossier derives that the attack channel's expected
+  signal scales with (1 − 2η).
+
+### C6 — The collapse over hypotheses is near-uniform
+- **Category:** C · **Severity:** High · **Status:** open · **needs supervisor discussion**
+- **Evidence:** collapse entropy 2.0704 → 2.0763 vs log 8 = 2.0794, i.e. KL to
+  uniform 0.0090 → 0.0031 nats; peak 0.149 → 0.141 (cell 27). The implied
+  temperature is ≈1.0, its initial value (verification script check 1).
+- **Proposed fix:** none before A7 and full-data runs; then discuss a
+  temperature or selectivity change.
+
+### C7 — Hypotheses' option-energy profiles converge
+- **Category:** C · **Severity:** High · **Status:** open · **needs supervisor discussion**
+- **Evidence:** energy-row pairwise cosine 0.769 → 0.838 (main run), 0.9706 (A3),
+  while hypothesis cosine stays 0.87–0.88 (cells 27, 39). At near-uniform
+  amplitudes the gradient on option energies is identical within a channel
+  (verification script check 13).
+- **Proposed fix:** measure within- vs across-channel cosine; no change before C6/D1.
+
+**Checked, not added as separate issues:** "learned scalars never move" is
+explained by the Adam step budget (B8; check 5), with `hypothesis_temp` as the
+one true zero-gradient case (A1). "Sanity check passes on a saturated metric" is
+part of C2.
