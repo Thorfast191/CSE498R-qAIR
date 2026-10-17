@@ -6,7 +6,15 @@ properly, possibly on an easier dataset. The medical domain comes later.
 Drug-combination work is parked; it is not in this repo.
 
 The baseline is the capstone code, **v46** (commit `9552498`, tag
-`capstone-final`). Baseline work happens on branch `baseline`. Local `main`
+`capstone-final`). Baseline work happens on branch `baseline`.
+
+Repository: https://github.com/Thorfast191/CSE498R-qAIR.git (remote
+`cse498r`). Local `baseline` tracks `cse498r/main` and is pushed there
+(`git push`; this repo sets `push.default=upstream`). Its history starts
+fresh at the v46 tree: commit `9552498` and tag `capstone-final` exist only
+locally and in https://github.com/Thorfast191/qAIR-CSE499B (full history).
+Never push `capstone-final`, `baseline-cse499b-history` or `main` to
+`cse498r` — their history contains checkpoints. Local `main`
 is older v40 code (it still has the input-ignoring circuit bug) — do not
 train from it. The uncommitted v47 changes were not approved; they are kept
 only as a backup patch (`~/qair_backup/v47_uncommitted.patch`) and must not
