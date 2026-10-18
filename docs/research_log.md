@@ -56,7 +56,7 @@ fix commit cannot name itself.
 
 ## 2026-10-18 — A9: a cache that fails to load is never touched
 
-- **Commit:** see the follow-up entry below.
+- **Commit:** `0313a15`.
 - **Change:** `safe_load_cache` (`weights_only=True`, `TorchVersion`
   allow-listed via `torch.serialization.safe_globals`); load failures raise
   `CacheLoadError` with path, exception and the JSON sidecar header; `_save`

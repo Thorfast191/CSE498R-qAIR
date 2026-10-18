@@ -603,7 +603,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** none. **Needs supervisor approval?** No.
 
 #### A9 (new, 2026-10-18) Any cache-load error moved the cache aside and rebuilt it
-- **Status:** **fixed 2026-10-18** (commit in docs/research_log.md; details and
+- **Status:** **fixed 2026-10-18** in `0313a15` (details and
   test evidence in issues.md A9). Found while fixing E3: under torch ≥ 2.6,
   `torch.load` defaults to `weights_only=True`, and the catch-all handler
   renamed a valid cache to `.corrupt` and rebuilt it. Loads now use

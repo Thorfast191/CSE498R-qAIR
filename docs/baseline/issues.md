@@ -533,7 +533,7 @@ part of C2.
 ## 10. Issues found during the Phase 1 fixes
 
 ### A9 — Any cache-load error is treated as a truncated file: the cache is moved aside and rebuilt
-- **Category:** A · **Severity:** High · **Status:** **fixed** (commit: see research_log.md) (found 2026-10-18 while fixing E3)
+- **Category:** A · **Severity:** High · **Status:** **fixed** in `0313a15` (found 2026-10-18 while fixing E3)
 - **Evidence:** `training/dataset.py` (load block, `except Exception` after
   `torch.load(cache_path, map_location="cpu")`) renames the file to
   `.corrupt` and rebuilds from scratch for *every* exception, not only a
