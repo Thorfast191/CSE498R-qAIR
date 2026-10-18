@@ -1,8 +1,11 @@
+import contextlib
 import hashlib
 import json
 import os
 import time
 import torch
+
+from torch.torch_version import TorchVersion
 
 from tqdm.auto import tqdm
 from torch.utils.data import Dataset
@@ -29,6 +32,30 @@ from models.encoder import HypothesisEncoder
 RESUME_INVARIANTS = (
     "gen_seed", "generator", "generator_revision", "gen_config", "prompt_sha256",
 )
+
+
+class CacheLoadError(RuntimeError):
+    """A cache file exists but cannot be loaded. The file is left untouched."""
+
+
+def safe_load_cache(cache_path):
+    """
+    torch.load with weights_only=True: tensors and plain containers only, so
+    loading a cache can never execute code stored in it. TorchVersion (a str
+    subclass) is allow-listed because a raw torch.__version__ in a header is
+    harmless and would otherwise be refused by torch >= 2.6.
+    """
+
+    safe_globals = getattr(torch.serialization, "safe_globals", None)
+
+    allow = safe_globals([TorchVersion]) if safe_globals else contextlib.nullcontext()
+
+    with allow:
+        return torch.load(cache_path, map_location="cpu", weights_only=True)
+
+
+def header_path(cache_path):
+    return cache_path + ".header.json"
 
 
 def batch_seed(gen_seed, raw_idx):
@@ -112,40 +139,18 @@ class QAIRDataset(Dataset):
             print(f"[CACHE FOUND] {cache_path}")
 
             try:
-                loaded = torch.load(cache_path, map_location="cpu")
+                loaded = safe_load_cache(cache_path)
 
             except Exception as e:
-                # Almost always a build that was interrupted mid-write by
-                # an older version of _save() (which wrote in place rather
-                # than atomically). The partial file is unreadable and so
-                # cannot be resumed from -- move it aside rather than
-                # delete it, and rebuild, instead of dying with a raw
-                # miniz stack trace.
-                salvage = cache_path + ".corrupt"
+                # Never rename, delete or rebuild here. The old handler
+                # assumed every failure was a truncated write and moved the
+                # file aside -- but a torch upgrade (weights_only=True by
+                # default from 2.6) fails a perfectly good cache the same way,
+                # and hours of generation would go to ".corrupt". The user
+                # decides what happens to the file.
+                raise CacheLoadError(self._load_failure_message(cache_path, e)) from e
 
-                print(
-                    f"\n[CACHE UNREADABLE] {cache_path}\n"
-                    f"  {type(e).__name__}: {e}\n"
-                    f"  This is what a cache build interrupted mid-write "
-                    f"looks like (truncated zip archive).\n"
-                    f"  Moving it to {salvage} and rebuilding from scratch.\n"
-                    f"  Saves are atomic now, so this cannot recur.\n"
-                )
-
-                if os.path.exists(salvage):
-                    os.remove(salvage)
-
-                os.replace(cache_path, salvage)
-
-                loaded = None
-
-            if loaded is None:
-                self.samples = []
-                is_complete = False
-                resume_raw_index = 0
-                version = CACHE_VERSION
-
-            elif isinstance(loaded, dict):
+            if isinstance(loaded, dict):
                 self.samples = loaded.get("samples", [])
                 is_complete = loaded.get("complete", False)
                 resume_raw_index = loaded.get("raw_index", 0)
@@ -562,6 +567,40 @@ class QAIRDataset(Dataset):
         )
 
     # ========================================================
+    # LOAD FAILURE REPORT
+    # ========================================================
+
+    @staticmethod
+    def _load_failure_message(cache_path, error):
+
+        side = header_path(cache_path)
+
+        if os.path.exists(side):
+            try:
+                with open(side) as f:
+                    header = json.dumps(json.load(f), indent=2, sort_keys=True)
+                header = (f"  sidecar header (written at the last save; may lag "
+                          f"the cache by one save):\n{header}")
+            except (OSError, ValueError) as side_error:
+                header = f"  sidecar header {side} unreadable: {side_error}"
+        else:
+            header = (f"  no header sidecar ({side} missing): the cache predates "
+                      f"version 46 or was never saved by this code")
+
+        return (
+            f"\nCannot load cache {cache_path}\n"
+            f"  {type(error).__name__}: {error}\n"
+            f"{header}\n"
+            f"The file has NOT been moved, renamed or deleted.\n"
+            f"  - weights_only / unsupported global: the cache contains a type "
+            f"this torch refuses to unpickle safely; load it with the torch "
+            f"version recorded above, never with weights_only=False on a file "
+            f"you did not write.\n"
+            f"  - truncated archive: inspect it, then move it yourself before "
+            f"rebuilding with scripts/build_cache.py.\n"
+        )
+
+    # ========================================================
     # READ-ONLY GUARD
     # ========================================================
 
@@ -669,6 +708,27 @@ class QAIRDataset(Dataset):
     # SAVE / REPORT
     # ========================================================
 
+    def _header(self, raw_index, complete):
+        """Plain-JSON summary of the cache, readable even if torch.load is not."""
+
+        provenance = self.provenance or {}
+        segments = provenance.get("segments") or [{}]
+
+        return {
+            "version": CACHE_VERSION,
+            "arc_config": self.arc_config,
+            "raw_index": raw_index,
+            "complete": complete,
+            "n_samples": len(self.samples),
+            "gen_seed": provenance.get("gen_seed"),
+            "generator": provenance.get("generator"),
+            "generator_revision": provenance.get("generator_revision"),
+            "device": segments[-1].get("device"),
+            "device_name": segments[-1].get("device_name"),
+            "torch_version": segments[-1].get("torch_version"),
+            "hypotheses_sha256": self.hypotheses_sha256(),
+        }
+
     def _save(self, cache_path, raw_index, complete):
         """
         Atomic: write to a temp file in the same directory, then rename.
@@ -715,6 +775,15 @@ class QAIRDataset(Dataset):
             os.fsync(f.fileno())
 
         os.replace(tmp_path, cache_path)
+
+        side = header_path(cache_path)
+
+        with open(side + ".tmp", "w") as f:
+            json.dump(self._header(raw_index, complete), f, indent=2, sort_keys=True)
+            f.flush()
+            os.fsync(f.fileno())
+
+        os.replace(side + ".tmp", side)
 
         self._touch_lock(cache_path, raw_index)
 

@@ -135,6 +135,17 @@ this repo decides.
   the checkpoint; refuse to resume on a mismatch.
 - **Verify:** Two 1-epoch smoke runs (≤20 examples, separate cache dir) with
   different seeds → two checkpoint files, different initial loss.
+- **Added to A3's scope (2026-10-18, from A9):** every checkpoint/history/config
+  `torch.load` call omits `weights_only`, so under torch ≥ 2.6 (default
+  `weights_only=True`) any non-allow-listed object in a checkpoint makes it
+  fail to load: `training/checkpoint.py:30` (latest checkpoint), `:56`
+  (resumed history), `training/runner.py:219` (best checkpoint),
+  `training/ablations.py:300` (best checkpoint), `evaluation/input_ablation.py:255`
+  (config), `:262` (checkpoint), `evaluation/sample_inference.py:136`
+  (checkpoint). A3 rewrites the checkpoint format, so it must load these
+  explicitly with `weights_only=True` (allow-listing only plain, safe types),
+  never fall back to `weights_only=False`, and test that a saved checkpoint
+  reloads under that setting.
 
 ### A4 — Resumed training history discarded and overwritten
 - **Category:** A · **Severity:** Medium · **Status:** open
@@ -522,7 +533,7 @@ part of C2.
 ## 10. Issues found during the Phase 1 fixes
 
 ### A9 — Any cache-load error is treated as a truncated file: the cache is moved aside and rebuilt
-- **Category:** A · **Severity:** High · **Status:** open (found 2026-10-18 while fixing E3)
+- **Category:** A · **Severity:** High · **Status:** **fixed** (commit: see research_log.md) (found 2026-10-18 while fixing E3)
 - **Evidence:** `training/dataset.py` (load block, `except Exception` after
   `torch.load(cache_path, map_location="cpu")`) renames the file to
   `.corrupt` and rebuilds from scratch for *every* exception, not only a
@@ -539,4 +550,23 @@ part of C2.
   implicitly.
 - **Verify:** unit tests: a cache with a non-allow-listed header value raises
   with the path and is left in place; a truncated file is still detected.
+- **Fix (2026-10-18):**
+  - the load handler never renames, deletes or rebuilds; it raises
+    `CacheLoadError` with the path, the exception and the cache header;
+  - `safe_load_cache`: `torch.load(..., weights_only=True)` inside
+    `torch.serialization.safe_globals([TorchVersion])` (a `str` subclass,
+    safe to allow-list); never `weights_only=False`;
+  - `_save` also writes a plain-JSON sidecar `<cache>.header.json` (version,
+    arc_config, raw_index, complete, n_samples, gen_seed, generator and
+    revision, device, device name, torch version, hypotheses_sha256), so the
+    header is readable when the cache itself is not. Old caches without a
+    sidecar say so in the error.
+- **Test evidence:** `tests/test_cache_load_errors.py` 5 passed: a truncated
+  cache and a garbage file both raise and stay **byte-identical** (sha256
+  before = after; no `.corrupt` file); the truncated case reports version 46,
+  gen_seed 0 and device cpu from the sidecar; a `TorchVersion` header loads;
+  a pickled object whose `__reduce__` would create a file is refused and
+  **the file is not created**; the sidecar matches the cache. Full suite:
+  18 passed, 1 skipped. Mutations: restoring the rename handler fails 3 tests;
+  `weights_only=False` fails the unsafe-pickle test.
 

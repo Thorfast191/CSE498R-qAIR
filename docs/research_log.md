@@ -52,3 +52,21 @@ fix commit cannot name itself.
   2 passed.
 - **Not done:** no ARC-Easy cache, no training.
 
+---
+
+## 2026-10-18 — A9: a cache that fails to load is never touched
+
+- **Commit:** see the follow-up entry below.
+- **Change:** `safe_load_cache` (`weights_only=True`, `TorchVersion`
+  allow-listed via `torch.serialization.safe_globals`); load failures raise
+  `CacheLoadError` with path, exception and the JSON sidecar header; `_save`
+  writes `<cache>.header.json`. Files: `training/dataset.py`,
+  `tests/test_cache_load_errors.py` (new).
+- **Results:** `python -m pytest tests -q` → 18 passed, 1 skipped in 3.2 s.
+  Mutations: rename handler restored → 3 failed; `weights_only=False` → the
+  unsafe-pickle test failed (its marker file was created).
+- **Scope note:** the checkpoint `torch.load` calls (checkpoint.py, runner.py,
+  ablations.py, input_ablation.py, sample_inference.py) were added to A3's
+  scope in issues.md.
+- **Not done:** no ARC-Easy cache, no training.
+
