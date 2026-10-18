@@ -20,3 +20,7 @@ exports/*
 
 # macOS Finder metadata
 .DS_Store
+
+# Local working files, never tracked (untracked again after 2dedcd8)
+docs/prompts/
+docs/baseline/qAIR_baseline_issues.docx
