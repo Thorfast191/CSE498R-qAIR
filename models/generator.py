@@ -58,13 +58,19 @@ the LLM's judgement reaches the trainable model without being squeezed
 through the frozen 384-d sentence encoder.
 """
 
+import contextlib
+import hashlib
+import inspect
+import json
 import re
 import torch
+import transformers
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from config import (
     resolve_device,
+    GEN_BATCH_SIZE,
     GEN_MAX_NEW_TOKENS,
     GEN_TEMPERATURE,
     GEN_MODES,
@@ -80,12 +86,36 @@ SYSTEM_PROMPT = "You are an expert scientific reasoning system."
 # instead of averaging the two into mush.
 POLARITY = {"support": 1.0, "attack": -1.0}
 
+# Decoding settings for hypothesis generation. Recorded verbatim in the
+# cache header, so a cache states exactly how its text was sampled.
+GEN_TOP_P = 0.95
+GEN_REPETITION_PENALTY = 1.10
+
+
+@contextlib.contextmanager
+def seeded_rng(seed, device):
+    """
+    Run a block under torch's RNG seeded with `seed`, then restore the
+    caller's CPU (and CUDA) RNG state. Sampling inside the block is a
+    function of `seed` alone, not of whatever ran before it. Reproducible
+    per device only: CPU and CUDA sampling kernels draw differently from
+    the same seed.
+    """
+
+    devices = [torch.cuda.current_device()] if device == "cuda" else []
+
+    with torch.random.fork_rng(devices=devices):
+        torch.manual_seed(seed)
+        yield
+
 
 class HypothesisGenerator:
 
-    def __init__(self, device=None):
+    def __init__(self, device=None, model_name=LLM_NAME):
 
         self.device = device or resolve_device()
+
+        self.model_name = model_name
 
         # fp16 has no efficient kernels on most CPUs (and isn't relevant
         # on MPS the same way it is on CUDA) -- only use it on an actual
@@ -93,7 +123,7 @@ class HypothesisGenerator:
         dtype = torch.float16 if self.device == "cuda" else torch.float32
 
         self.tokenizer = AutoTokenizer.from_pretrained(
-            LLM_NAME,
+            model_name,
             trust_remote_code=True,
         )
 
@@ -113,7 +143,7 @@ class HypothesisGenerator:
         if self.device == "cuda":
 
             self.model = AutoModelForCausalLM.from_pretrained(
-                LLM_NAME,
+                model_name,
                 torch_dtype=dtype,
                 device_map="auto",
                 trust_remote_code=True,
@@ -122,12 +152,70 @@ class HypothesisGenerator:
         else:
 
             self.model = AutoModelForCausalLM.from_pretrained(
-                LLM_NAME,
+                model_name,
                 torch_dtype=dtype,
                 trust_remote_code=True,
             ).to(self.device)
 
         self.model.eval()
+
+    # ==========================================================
+    # PROVENANCE -- everything that determines the generated text
+    # ==========================================================
+
+    def generation_config(self):
+
+        return {
+            "max_new_tokens": GEN_MAX_NEW_TOKENS,
+            "temperature": GEN_TEMPERATURE,
+            "top_p": GEN_TOP_P,
+            "repetition_penalty": GEN_REPETITION_PENALTY,
+            "do_sample": True,
+            "gen_batch_size": GEN_BATCH_SIZE,
+        }
+
+    def prompt_sha256(self):
+        """
+        Hash of the rendered chat prompt for every mode (system prompt and
+        chat template included) plus the parser source, so any change to
+        what the model is asked or how its reply is cut changes the hash.
+        """
+
+        rendered = [
+            self._chat(self.build_prompt("{question}", "{option}", mode))
+            for mode in GEN_MODES
+        ]
+
+        payload = json.dumps(
+            {
+                "prompts": rendered,
+                "parser": inspect.getsource(type(self).parse_one),
+            },
+            sort_keys=True,
+        )
+
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def provenance(self):
+
+        device_name = (
+            torch.cuda.get_device_name(torch.cuda.current_device())
+            if self.device == "cuda" else self.device
+        )
+
+        return {
+            "generator": self.model_name,
+            "generator_revision": getattr(self.model.config, "_commit_hash", None)
+            or "unknown",
+            "gen_config": self.generation_config(),
+            "prompt_sha256": self.prompt_sha256(),
+            "device": self.device,
+            "device_name": device_name,
+            # str(): torch.__version__ is a TorchVersion object, which
+            # torch.load(weights_only=True) refuses to unpickle.
+            "torch_version": str(torch.__version__),
+            "transformers_version": str(transformers.__version__),
+        }
 
     # ==========================================================
     # PROMPTS -- one option, one mode, at a time
@@ -266,7 +354,8 @@ class HypothesisGenerator:
         ]
 
     @torch.no_grad()
-    def generate_batch_with_flags(self, questions, options_list, modes=GEN_MODES):
+    def generate_batch_with_flags(self, questions, options_list, modes=GEN_MODES,
+                                  seed=None):
         """
         Returns one dict per input question:
 
@@ -284,6 +373,9 @@ class HypothesisGenerator:
         permutes options for shuffling and reorders each mode block by
         the same permutation, which is only correct if the blocks are
         contiguous and each is in option order.
+
+        seed: if given, sampling runs under seeded_rng(seed), so the same
+        batch with the same seed yields the same text on the same device.
         """
 
         flat_prompts = []
@@ -303,15 +395,21 @@ class HypothesisGenerator:
             padding=True,
         ).to(self.device)
 
-        outputs = self.model.generate(
-            **inputs,
-            max_new_tokens=GEN_MAX_NEW_TOKENS,
-            temperature=GEN_TEMPERATURE,
-            top_p=0.95,
-            do_sample=True,
-            repetition_penalty=1.10,
-            pad_token_id=self.tokenizer.eos_token_id,
+        rng = (
+            seeded_rng(seed, self.device) if seed is not None
+            else contextlib.nullcontext()
         )
+
+        with rng:
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=GEN_MAX_NEW_TOKENS,
+                temperature=GEN_TEMPERATURE,
+                top_p=GEN_TOP_P,
+                do_sample=True,
+                repetition_penalty=GEN_REPETITION_PENALTY,
+                pad_token_id=self.tokenizer.eos_token_id,
+            )
 
         input_len = inputs["input_ids"].shape[1]
 

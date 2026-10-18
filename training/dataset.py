@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import time
@@ -11,6 +12,7 @@ from config import (
     EMBEDDING_MODEL,
     GEN_BATCH_SIZE,
     GEN_MODES,
+    GEN_SEED,
     CACHE_VERSION,
     ARC_CONFIG,
     cache_filename,
@@ -20,6 +22,25 @@ from benchmarks.arc import load_arc
 
 from models.generator import HypothesisGenerator, LLM_NAME
 from models.encoder import HypothesisEncoder
+
+
+# Provenance fields that must match for a partial cache to be resumed:
+# changing any of them changes the text that would be generated.
+RESUME_INVARIANTS = (
+    "gen_seed", "generator", "generator_revision", "gen_config", "prompt_sha256",
+)
+
+
+def batch_seed(gen_seed, raw_idx):
+    """
+    Seed for the generation batch whose first question has raw index
+    `raw_idx`. sha256, not hash(): Python's str hash is salted per process,
+    so it would give a different seed after every restart.
+    """
+
+    digest = hashlib.sha256(f"{gen_seed}:{raw_idx}".encode("ascii")).digest()
+
+    return int.from_bytes(digest[:8], "big") & (2 ** 63 - 1)
 
 
 class QAIRDataset(Dataset):
@@ -50,9 +71,17 @@ class QAIRDataset(Dataset):
     """
 
     def __init__(self, split="train", max_samples=None, cache_dir="./cache",
-                 arc_config=None, modes=GEN_MODES):
+                 arc_config=None, modes=GEN_MODES, gen_seed=GEN_SEED,
+                 autosave_every=50):
 
         self.samples = []
+
+        self.gen_seed = gen_seed
+
+        self.autosave_every = autosave_every
+
+        # Set from the cache header on load, or from the generator on build.
+        self.provenance = None
 
         self.arc_config = arc_config or ARC_CONFIG
 
@@ -113,6 +142,7 @@ class QAIRDataset(Dataset):
                 is_complete = loaded.get("complete", False)
                 resume_raw_index = loaded.get("raw_index", 0)
                 version = loaded.get("version", 0)
+                self.provenance = loaded.get("provenance")
             else:
                 # Pre-v33 flat-list format. No version, no flags, no
                 # question embedding -- nothing v45 can use.
@@ -145,6 +175,14 @@ class QAIRDataset(Dataset):
 
             print(f"[CACHE LOADED] {len(self.samples)} samples "
                   f"(complete={is_complete}, version={version})")
+
+            if self.samples and self.provenance is None:
+                print(
+                    "[PROVENANCE UNKNOWN] This cache predates seeded "
+                    "generation (version < 46): its sampling seed, decoding "
+                    "config and prompts were not recorded. Readable, but it "
+                    "can never be resumed."
+                )
 
             # Only the paths below may return early. A cache that failed to
             # load leaves samples empty, and returning here would hand the
@@ -196,6 +234,12 @@ class QAIRDataset(Dataset):
 
         generator = HypothesisGenerator()
 
+        try:
+            self._start_provenance(generator, resume_raw_index)
+        except RuntimeError:
+            self._release_lock(cache_path)
+            raise
+
         encoder = HypothesisEncoder()
 
         ds = load_arc(self.arc_config)
@@ -228,9 +272,12 @@ class QAIRDataset(Dataset):
             questions = [item[1] for item in pending]
             options_list = [item[2] for item in pending]
 
+            count_before = count
+
             try:
                 batch_out = generator.generate_batch_with_flags(
-                    questions, options_list, modes=self.modes
+                    questions, options_list, modes=self.modes,
+                    seed=batch_seed(self.gen_seed, pending[0][0]),
                 )
             except Exception as e:
                 print(f"[BATCH GENERATE FAILED] {e} -- falling back per-item")
@@ -325,18 +372,24 @@ class QAIRDataset(Dataset):
 
                 last_raw_index = raw_idx + 1
 
-                # ========================================
-                # PERIODIC SAVE (marked incomplete)
-                # ========================================
-
-                if count % 50 == 0:
-
-                    self._save(cache_path, last_raw_index, complete=False)
-
-                    print(f"[AUTOSAVE] {count} samples "
-                          f"(raw_index={last_raw_index})")
-
             pending.clear()
+
+            # ========================================
+            # PERIODIC SAVE (marked incomplete)
+            #
+            # Only at a batch boundary. A save in the middle of a batch
+            # made a resumed build regroup the remaining questions into
+            # different batches -- different padding and a different
+            # seed per question -- so it could never reproduce an
+            # uninterrupted build.
+            # ========================================
+
+            if count // self.autosave_every > count_before // self.autosave_every:
+
+                self._save(cache_path, last_raw_index, complete=False)
+
+                print(f"[AUTOSAVE] {count} samples "
+                      f"(raw_index={last_raw_index})")
 
         for raw_idx, ex in enumerate(
             tqdm(raw, desc=f"Building {split} cache", initial=resume_raw_index)
@@ -490,6 +543,80 @@ class QAIRDataset(Dataset):
         )
 
     # ========================================================
+    # PROVENANCE
+    # ========================================================
+
+    def _start_provenance(self, generator, resume_raw_index):
+        """
+        Fresh build: record the generator's provenance. Resume: refuse if
+        anything that determines the generated text differs from what the
+        partial cache was built with, so one cache never mixes two
+        sampling processes. Device and library versions may differ
+        between segments (reproducibility is per device); each segment is
+        recorded rather than refused.
+        """
+
+        current = dict(generator.provenance(), gen_seed=self.gen_seed)
+
+        segment = {
+            "start_raw_index": resume_raw_index,
+            "device": current.pop("device"),
+            "device_name": current.pop("device_name"),
+            "torch_version": current.pop("torch_version"),
+            "transformers_version": current.pop("transformers_version"),
+        }
+
+        if not self.samples:
+            self.provenance = dict(current, segments=[segment])
+            return
+
+        if self.provenance is None:
+            raise RuntimeError(
+                "\nRefusing to resume a cache without provenance (version < 46).\n"
+                "  Its seed and prompts are unknown, so new samples could not be\n"
+                "  generated the same way. Build it again into a new cache dir.\n"
+            )
+
+        mismatched = {
+            key: (self.provenance.get(key), current[key])
+            for key in RESUME_INVARIANTS
+            if self.provenance.get(key) != current[key]
+        }
+
+        if mismatched:
+            lines = "\n".join(
+                f"  {key}: cache={old!r}  now={new!r}"
+                for key, (old, new) in mismatched.items()
+            )
+            raise RuntimeError(
+                f"\nRefusing to resume: this partial cache was generated "
+                f"differently.\n{lines}\n"
+                f"Resume with the original settings, or build into a new cache dir.\n"
+            )
+
+        last = self.provenance["segments"][-1]
+
+        if any(last[k] != segment[k] for k in segment if k != "start_raw_index"):
+            print(
+                f"[PROVENANCE] Resuming on a different device or library "
+                f"version ({last['device_name']} -> {segment['device_name']}). "
+                f"Text from the two segments is not reproducible on a single "
+                f"device; both segments are recorded in the header."
+            )
+
+        self.provenance["segments"].append(segment)
+
+    def hypotheses_sha256(self):
+        """Hash of every question, option list and hypothesis, in order."""
+
+        payload = json.dumps(
+            [[s["question"], s["options"], s["hypotheses"]] for s in self.samples],
+            ensure_ascii=False,
+        )
+
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    # ========================================================
     # SAVE / REPORT
     # ========================================================
 
@@ -523,6 +650,8 @@ class QAIRDataset(Dataset):
                     "arc_config": self.arc_config,
                     "modes": list(self.modes),
                     "version": CACHE_VERSION,
+                    "provenance": self.provenance,
+                    "hypotheses_sha256": self.hypotheses_sha256(),
                 },
                 f,
             )

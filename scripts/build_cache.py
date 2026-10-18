@@ -13,15 +13,24 @@ v45 does roughly TWICE the generation of v44 -- one supporting and one
 attacking hypothesis per option -- plus a cheap scoring pass for the
 per-option LLM log-likelihood. Budget accordingly.
 
-Safe to interrupt. The build autosaves every 50 samples with the raw
-dataset index it reached, and saves are atomic (temp file + os.replace),
-so Ctrl-C, a crash, or a reboot costs you at most 50 samples -- rerun the
-same command and it resumes where it stopped rather than restarting.
+Safe to interrupt. The build autosaves at the first batch boundary after
+every 50 samples, with the raw dataset index it reached, and saves are
+atomic (temp file + os.replace), so Ctrl-C, a crash, or a reboot costs
+you at most ~60 samples -- rerun the same command and it resumes where it
+stopped rather than restarting.
+
+Reproducible per device: every generation batch is seeded from
+(--gen-seed, raw index of its first question), so the same command on the
+same device produces the same hypotheses, interrupted or not. The seed,
+decoding config, prompt hash, generator revision, device and library
+versions are stored in the cache header; resuming with a different seed,
+prompt or generator is refused.
 
     python scripts/build_cache.py                       # train + validation
     python scripts/build_cache.py --splits test         # add the test split
     python scripts/build_cache.py --limit 80 20         # smoke-run caps
     python scripts/build_cache.py --arc-config merged
+    python scripts/build_cache.py --gen-seed 1          # a different sample
 
 Progress goes to STDERR, because that is where tqdm writes. If you
 redirect output, watch the stderr stream -- a quiet stdout does not mean
@@ -40,6 +49,7 @@ from config import (  # noqa: E402
     ARC_CONFIG,
     ARC_SPLIT_SIZES,
     GEN_MODES,
+    GEN_SEED,
     resolve_device,
 )
 from training.dataset import QAIRDataset  # noqa: E402
@@ -67,6 +77,10 @@ def main():
             "e.g. --splits train validation --limit 80 20"
         ),
     )
+    parser.add_argument(
+        "--gen-seed", type=int, default=GEN_SEED,
+        help="Seed for hypothesis sampling (recorded in the cache header).",
+    )
     args = parser.parse_args()
 
     sizes = ARC_SPLIT_SIZES.get(args.arc_config, {})
@@ -92,6 +106,7 @@ def main():
     print(f"benchmark : {args.arc_config}")
     print(f"cache dir : {os.path.abspath(args.cache_dir)}")
     print(f"splits    : {', '.join(args.splits)}")
+    print(f"gen seed  : {args.gen_seed}  (reproducible on this device only)")
     print(f"modes     : {', '.join(GEN_MODES)}  "
           f"({len(GEN_MODES)} hypotheses per option)")
 
@@ -127,12 +142,13 @@ def main():
 
         ds = QAIRDataset(
             split=split, max_samples=limit, cache_dir=args.cache_dir,
-            arc_config=args.arc_config,
+            arc_config=args.arc_config, gen_seed=args.gen_seed,
         )
 
         print(
             f"[DONE {split}] {len(ds)} samples in "
-            f"{(time.time() - t0) / 60:.1f} min"
+            f"{(time.time() - t0) / 60:.1f} min  "
+            f"hypotheses_sha256={ds.hypotheses_sha256()}"
         )
 
     print("\n" + "=" * 66)

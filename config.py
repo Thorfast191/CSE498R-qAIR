@@ -189,6 +189,13 @@ GEN_MAX_NEW_TOKENS = 64
 # hypotheses in superposition.
 GEN_TEMPERATURE = 0.7
 
+# Seed for hypothesis sampling during cache builds, separate from the
+# training seeds. Each generation batch is seeded from (GEN_SEED, raw index
+# of its first question), so a build -- including one interrupted and
+# resumed -- is reproducible on the same device. CPU and GPU sample
+# differently from the same seed; the cache header records the device.
+GEN_SEED = 0
+
 # ==========================================================
 # INTERFERENCE  (v45: making the Born rule non-trivial)
 # ==========================================================
@@ -301,4 +308,9 @@ CKPT_DIR = "./ckpt"
 # option log-likelihoods do not exist in it and only the LLM can produce
 # them. training/dataset.py refuses to load one rather than silently
 # training on half the evidence channels.
-CACHE_VERSION = 45
+#
+#   46 -- seeded generation and a provenance header (gen_seed, generator
+#         revision, decoding config, prompt hash, device, versions,
+#         hypotheses_sha256). Same sample schema as 45, so a 45 cache still
+#         loads for reading ("provenance unknown"); it is never resumed.
+CACHE_VERSION = 46

@@ -41,6 +41,7 @@ this repo decides.
 1. **E3** Unseeded hypothesis generation → caches not reproducible. *Blocks the cache build.*
 2. **E7** A capped cache silently regenerates (hours of LLM time). *Blocks the cache build.*
 3. **A6** Cache edge cases (complete flag rewritten, silent split substitution, silent zero scores). Same file as E3/E7 (`training/dataset.py`).
+   **A9** (found during E3): any load error moves the cache aside and rebuilds it. Proposed right after E7, same file.
 4. **A3** Run name lacks the seed / resume ignores config → a second seed resumes the first.
 5. **A4** Resumed history discarded.
 6. **A5** `input_ablation` rebuilds the wrong architecture without a saved config.
@@ -268,7 +269,7 @@ this repo decides.
   uncommitted** in the CSE499B clone (left as found). Nothing was pushed.
 
 ### E3 — Hypothesis generation is unseeded → caches not reproducible
-- **Severity:** High · **Status:** open · **Phase 1, item 1 (blocks the ARC-Easy cache)**
+- **Severity:** High · **Status:** **fixed** (commit: see `git log --grep "fix E3"`, recorded in docs/research_log.md) · **Phase 1, item 1**
 - **Evidence:** `models/generator.py:306-314` uses `do_sample=True`,
   `temperature=0.7`, `top_p=0.95`. `scripts/build_cache.py` and
   `training/dataset.py` never call `set_seed`/`manual_seed` [VERIFIED: grep].
@@ -277,6 +278,41 @@ this repo decides.
   revision and prompt hash in the cache header.
 - **Verify:** Two 20-question builds with the same seed give byte-identical
   hypotheses (separate cache dirs).
+- **Second cause, found while fixing:** the autosave fired on `count % 50`
+  inside the per-sample loop (`training/dataset.py:328-334` in v46), i.e. in
+  the middle of a generation batch. A resumed build then regrouped the
+  remaining questions into different batches, so even a seeded build could not
+  reproduce an uninterrupted one.
+- **Fix (2026-10-18):**
+  - each generation batch runs under `seeded_rng(batch_seed(gen_seed, raw
+    index of its first question))`; `batch_seed` uses sha256, not Python's
+    salted `hash()`; `fork_rng` leaves the caller's RNG untouched;
+  - autosave only at batch boundaries (`autosave_every`, default 50);
+  - cache `CACHE_VERSION` 46 with a `provenance` header: `gen_seed`,
+    generator and HF revision, decoding config, `prompt_sha256` (rendered
+    chat prompts + parser source), and per-segment device, device name,
+    torch and transformers versions; plus `hypotheses_sha256`;
+  - resuming with a different seed, generator, revision, decoding config or
+    prompt raises; a cache without provenance (v45) loads read-only and is
+    never resumed; a device or library change between segments is recorded
+    with a warning;
+  - `config.GEN_SEED = 0`; `scripts/build_cache.py --gen-seed`.
+  - **Reproducibility is per device**: CPU and GPU sample differently from the
+    same seed.
+- **Test evidence** (`tests/test_cache_determinism.py`, CPU, scratch venv
+  torch 2.14.1 / transformers 4.52.4):
+  - fast suite with a fake generator that samples from torch's RNG through
+    the real `seeded_rng` helper: **8 passed** in 2.75 s — same seed gives an
+    identical cache; a different seed differs; a build interrupted inside its
+    third batch and resumed equals the uninterrupted build; resuming with a
+    different seed or prompt raises (and releases the lock); a v45 cache is
+    never resumed; `batch_seed` is identical in a fresh process with a
+    different `PYTHONHASHSEED`; `seeded_rng` restores the caller's RNG;
+  - mutation check: the old mid-batch autosave fails the resume test; an
+    unseeded batch fails the same-seed and resume tests;
+  - real model (`QAIR_SLOW=1`): two 5-question ARC-Easy builds with
+    Qwen2.5-0.5B-Instruct (revision `7ae55760…`) on CPU give the same
+    `hypotheses_sha256` = `5b4f8404…f51d` (**1 passed**, 70 s).
 
 ### E4 — Checkpoints committed to git — *partly resolved by approved git step*
 - Commit `b3cefd5` on `baseline` untracks the 21 `ckpt/*.pt` files, removes
@@ -462,3 +498,27 @@ as measurement only; D5 in Phase 4; C6/C7 for the supervisor).
 explained by the Adam step budget (B8; check 5), with `hypothesis_temp` as the
 one true zero-gradient case (A1). "Sanity check passes on a saturated metric" is
 part of C2.
+
+---
+
+## 10. Issues found during the Phase 1 fixes
+
+### A9 — Any cache-load error is treated as a truncated file: the cache is moved aside and rebuilt
+- **Category:** A · **Severity:** High · **Status:** open (found 2026-10-18 while fixing E3)
+- **Evidence:** `training/dataset.py` (load block, `except Exception` after
+  `torch.load(cache_path, map_location="cpu")`) renames the file to
+  `.corrupt` and rebuilds from scratch for *every* exception, not only a
+  truncated archive. Under torch ≥ 2.6, `torch.load` defaults to
+  `weights_only=True`, so any header value that is not an allow-listed type
+  raises `UnpicklingError` and triggers the rebuild. Observed in the E3 test
+  run: a `TorchVersion` object in the header made a valid cache be moved to
+  `.corrupt` and regenerated. (E3 now stores plain strings, so E3's own header
+  is safe; the handler remains dangerous for any other load error, e.g. a
+  torch version change.)
+- **Proposed fix:** treat only a genuine truncation (zip central-directory
+  error) as recoverable; re-raise every other error with the path; never
+  rename a file silently. Combined with E7, a build must never start
+  implicitly.
+- **Verify:** unit tests: a cache with a non-allow-listed header value raises
+  with the path and is left in place; a truncated file is still detected.
+
