@@ -269,7 +269,7 @@ this repo decides.
   uncommitted** in the CSE499B clone (left as found). Nothing was pushed.
 
 ### E3 — Hypothesis generation is unseeded → caches not reproducible
-- **Severity:** High · **Status:** **fixed** (commit: see `git log --grep "fix E3"`, recorded in docs/research_log.md) · **Phase 1, item 1**
+- **Severity:** High · **Status:** **fixed** in `b5c0ae8` · **Phase 1, item 1**
 - **Evidence:** `models/generator.py:306-314` uses `do_sample=True`,
   `temperature=0.7`, `top_p=0.95`. `scripts/build_cache.py` and
   `training/dataset.py` never call `set_seed`/`manual_seed` [VERIFIED: grep].

@@ -8,7 +8,7 @@ fix commit cannot name itself.
 
 ## 2026-10-18 — E3: seeded, reproducible hypothesis generation
 
-- **Branch / base:** `baseline`, on top of `d0a074a`.
+- **Commit:** `b5c0ae8` (branch `baseline`, on top of `d0a074a`).
 - **Change:** per-batch seeded sampling (`batch_seed(gen_seed, raw_idx)`,
   sha256), autosave only at batch boundaries, `CACHE_VERSION` 46 with a
   provenance header, resume guard, `config.GEN_SEED = 0`,

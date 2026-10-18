@@ -903,7 +903,7 @@ $A_n = S_n + e^{i\rho}R_n$.
   **Needs supervisor approval?** Applying it: yes (A7).
 
 #### E3 Hypothesis generation is unseeded → caches are not reproducible
-- **Status:** **fixed 2026-10-18** (`git log --grep "fix E3"`; details and test
+- **Status:** **fixed 2026-10-18** in `b5c0ae8` (details and test
   evidence in issues.md E3). A second cause was found: mid-batch autosaves.
 - **Category / severity / blocks:** E / High / **blocks the ARC-Easy cache build**.
 - **Observation:** no seeding anywhere in the build path [VERIFIED: grep for
