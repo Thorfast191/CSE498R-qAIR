@@ -101,6 +101,8 @@ drift, per-module gradient norms.
 - Compute: Colab T4. Estimate time and memory first; smoke-test on ≤20 examples
   with a separate cache directory before any full run.
 - Track issues in docs/baseline/issues.md; log every run in docs/research_log.md.
+- Always commit before starting a training run; the code fingerprint ignores
+  untracked .py files (checkpoint provenance, A3).
 
 ## Ask me before
 changing pipeline order or adding/removing a stage; changing the dataset or

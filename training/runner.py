@@ -121,6 +121,7 @@ def run_training(
     train_samples=None,
     val_samples=None,
     epochs=EPOCHS,
+    patience=PATIENCE,
     persistent_steps=PERSISTENT_STEPS,
     n_qubits=N_QUBITS,
     seed=SEED,
@@ -179,7 +180,7 @@ def run_training(
         seed=seed,
         model_config=model_config,
         train_config=training_config(
-            epochs, PATIENCE, WEIGHT_DECAY, train_samples, val_samples,
+            epochs, patience, WEIGHT_DECAY, train_samples, val_samples,
         ),
         train_loader=train_loader,
         val_loader=val_loader,
@@ -197,18 +198,9 @@ def run_training(
         weight_decay=WEIGHT_DECAY,
     )
 
-    start_epoch, best_acc, _ = load_or_resume(
-        trainer, ckpt_dir, run_name, epochs, provenance
-    )
+    state = load_or_resume(trainer, ckpt_dir, run_name, epochs, provenance)
 
-    print(f"\nTraining from epoch {start_epoch} to {epochs}")
-
-    history = trainer.train(
-        epochs=epochs,
-        start_epoch=start_epoch,
-        best_acc=best_acc,
-        patience=PATIENCE,
-    )
+    history = trainer.train_from(state, epochs, patience=patience)
 
     config_path = os.path.join(ckpt_dir, f"{run_name}_config.pt")
     torch.save(

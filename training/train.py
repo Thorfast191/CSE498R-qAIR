@@ -1,3 +1,4 @@
+import copy
 import math
 import os
 
@@ -8,7 +9,7 @@ from torch.amp import autocast, GradScaler
 
 from config import BASE_LR, NEW_LR, WEIGHT_DECAY
 
-from training.checkpoint import CHECKPOINT_FORMAT
+from training.checkpoint import CHECKPOINT_FORMAT, is_finished
 from training.losses import compute_loss
 from training.evaluate import evaluate, batch_to_model
 
@@ -92,7 +93,13 @@ class Trainer:
     # SAVE CHECKPOINT
     # =====================================================
 
-    def save_checkpoint(self, epoch, best_acc, best=False):
+    def save_checkpoint(self, epoch, best_acc, history, epochs_no_improve,
+                        stopped_early=False, best=False):
+        """
+        history, epochs_no_improve and stopped_early are saved with the
+        weights so a resume continues the same curves and the same
+        early-stopping count, and an early-stopped run stays finished.
+        """
 
         filename = f"{self.name}_best.pt" if best else f"{self.name}_latest.pt"
 
@@ -110,6 +117,9 @@ class Trainer:
                     self.scheduler.state_dict() if self.scheduler is not None else None
                 ),
                 "scaler": self.scaler.state_dict(),
+                "history": history,
+                "epochs_no_improve": epochs_no_improve,
+                "stopped_early": stopped_early,
             },
             path,
         )
@@ -126,10 +136,39 @@ class Trainer:
     # TRAIN
     # =====================================================
 
-    def train(self, epochs=5, start_epoch=0, best_acc=0.0, patience=None):
+    def train_from(self, state, epochs, patience=None):
+        """
+        Continues from a load_or_resume state, or skips a finished run
+        (all epochs done, or stopped early) and returns its saved history.
+        """
+
+        if is_finished(state, epochs):
+            reason = (
+                "stopped early" if state["stopped_early"] else f"{epochs} epochs"
+            )
+            print(f"[SKIP] {self.name} already finished ({reason}).")
+            return state["history"]
+
+        print(f"\nTraining from epoch {state['start_epoch']} to {epochs}")
+
+        return self.train(
+            epochs=epochs,
+            start_epoch=state["start_epoch"],
+            best_acc=state["best_acc"],
+            patience=patience,
+            history=state["history"],
+            epochs_no_improve=state["epochs_no_improve"],
+        )
+
+    def train(self, epochs=5, start_epoch=0, best_acc=0.0, patience=None,
+              history=None, epochs_no_improve=0):
         """
         patience: if set (e.g. 5), stop early after this many epochs with
         no improvement in val acc. None disables early stopping.
+
+        history, epochs_no_improve: the state restored by load_or_resume.
+        New epochs are appended to the restored history, and the
+        early-stopping count continues from the restored value.
         """
 
         if self.scheduler is None:
@@ -137,7 +176,7 @@ class Trainer:
                 self.optim, T_max=epochs, eta_min=1e-6
             )
 
-        history = {
+        history = copy.deepcopy(history) if history is not None else {
             "loss": [],
             "acc": [],
             "entropy": [],
@@ -151,8 +190,6 @@ class Trainer:
             "destructive_fraction": [],
             "ece": [],
         }
-
-        epochs_no_improve = 0
 
         for epoch in range(start_epoch, epochs):
 
@@ -207,8 +244,6 @@ class Trainer:
                       "interference_ratio", "phase_effect",
                       "destructive_fraction", "ece"):
                 history[k].append(metrics[k])
-
-            self.save_history(history)
 
             print("\n" + "=" * 60)
             print(f"[{self.name}] Epoch {epoch+1}/{epochs}   "
@@ -330,17 +365,29 @@ class Trainer:
                     f"evaluation/input_ablation.py."
                 )
 
-            if metrics["acc"] > best_acc:
+            improved = metrics["acc"] > best_acc
+
+            if improved:
                 best_acc = metrics["acc"]
-                self.save_checkpoint(epoch, best_acc, best=True)
-                print(f"[{self.name}][BEST] {best_acc:.4f}")
                 epochs_no_improve = 0
             else:
                 epochs_no_improve += 1
 
-            self.save_checkpoint(epoch, best_acc, best=False)
+            history["best_acc"] = best_acc
 
-            if patience is not None and epochs_no_improve >= patience:
+            stopped_early = patience is not None and epochs_no_improve >= patience
+
+            if improved:
+                self.save_checkpoint(epoch, best_acc, history, epochs_no_improve,
+                                     best=True)
+                print(f"[{self.name}][BEST] {best_acc:.4f}")
+
+            self.save_history(history)
+
+            self.save_checkpoint(epoch, best_acc, history, epochs_no_improve,
+                                 stopped_early=stopped_early)
+
+            if stopped_early:
                 print(
                     f"\n[{self.name}][EARLY STOP] "
                     f"No improvement for {patience} epochs. "

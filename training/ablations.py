@@ -280,25 +280,16 @@ def run_ablation_suite(
 
             # A finished run is skipped only when its provenance matches;
             # a checkpoint from another session, commit or cache raises.
-            start_epoch, best_acc, resumed_history = load_or_resume(
+            state = load_or_resume(
                 trainer, ckpt_dir, run_name, epochs, provenance
             )
 
-            if start_epoch >= epochs:
-                print(f"[SKIP] {run_name} already finished {epochs} epochs.")
-                history = resumed_history or {"best_acc": best_acc, "acc": []}
-            else:
-                history = trainer.train(
-                    epochs=epochs,
-                    start_epoch=start_epoch,
-                    best_acc=best_acc,
-                    patience=patience,
-                )
+            history = trainer.train_from(state, epochs, patience=patience)
 
             entry = {
                 "config": resolved,
                 "seed": seed,
-                "best_val_acc": history.get("best_acc", best_acc),
+                "best_val_acc": history.get("best_acc", state["best_acc"]),
                 "final_pairwise_cos": (
                     history["pairwise_cos"][-1] if history.get("pairwise_cos") else None
                 ),

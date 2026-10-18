@@ -44,6 +44,8 @@ this repo decides.
    **A9** (found during E3): any load error moves the cache aside and rebuilds it. Proposed right after E7, same file.
 4. **A3** Run name lacks the seed / resume ignores config → a second seed resumes the first.
 5. **A4** Resumed history discarded.
+   **A10** (found during A4): an early-stopped run trains again when re-run. Fixed with A4 (same saved state).
+   **A11** (found during A4): a resumed run is not RNG-continuous with an uninterrupted one. Proposed with E10.
 6. **A5** `input_ablation` rebuilds the wrong architecture without a saved config.
 7. **A1, A2** Parameters that never receive gradient. The fix approach (remove vs exclude from the optimizer) needs confirmation because of checkpoint compatibility (rule 9).
 8. **A7** Validator relevance target has no hypothesis axis. **Blocked: supervisor approval.** A candidate fix exists in the v47 patch.
@@ -179,6 +181,7 @@ this repo decides.
     `Trainer` / `load_or_resume` cells of `notebooks/qAIR_v46.ipynb` no
     longer run. The notebook is left untouched as historical evidence
     (decision 2026-10-19); a new notebook comes in step 6.
+  - **Always commit before starting a training run; the code fingerprint ignores untracked .py files.**
   - Not done here: the resumed history is still discarded (A4);
     `input_ablation` still falls back to a default config (A5).
 - **Test evidence:** `tests/test_checkpoint_provenance.py` 28 passed (CPU,
@@ -200,7 +203,7 @@ this repo decides.
   `requirements.txt` not fingerprinted) each fail ≥ 1 test.
 
 ### A4 — Resumed training history discarded and overwritten
-- **Category:** A · **Severity:** Medium · **Status:** open
+- **Category:** A · **Severity:** Medium · **Status:** **fixed** (commit: see research_log.md)
 - **Evidence:** `training/runner.py:175` discards the resumed history
   (`start_epoch, best_acc, _ = load_or_resume(…)`). `training/train.py:132-145`
   starts a fresh `history`, and `:203` overwrites the file every epoch.
@@ -210,6 +213,35 @@ this repo decides.
   **1** epoch; `qair_v45_history.pt` holds 2.
 - **Proposed fix / verify:** Merge histories and persist `epochs_no_improve`.
   An interrupted-then-resumed smoke run should have one history entry per epoch.
+- **Fix (2026-10-19, approved 2026-10-19):**
+  1. `Trainer.save_checkpoint` stores `history`, `epochs_no_improve` and
+     `stopped_early` in every checkpoint, so they are saved atomically with
+     the weights and covered by the A3 provenance check;
+     `{run}_history.pt` remains the exported copy (written once per epoch,
+     after `best_acc` is updated);
+  2. `load_or_resume` returns the full resume state (start epoch, best acc,
+     history, `epochs_no_improve`, `stopped_early`) read from the checkpoint
+     only; the `_history.pt` read and its catch-all `except` that printed a
+     warning and continued with no history are gone. A format-2 checkpoint
+     without these keys raises (none exists outside tests; format stays 2);
+  3. `Trainer.train(…, history, epochs_no_improve)` appends to the restored
+     history and continues the early-stopping count; `Trainer.train_from`
+     (shared by `runner.py` and `ablations.py`) trains or skips;
+     `run_training` gains a `patience` argument (default `PATIENCE`).
+  - No tensor shape changes.
+- **Test evidence:** `tests/test_resume_state.py` (real model on CPU, fake
+  cache, scripted validation accuracy): a 4-epoch run interrupted after
+  epoch 2 and resumed has `acc == [0.5, 0.625, 0.375, 0.75]`, 4 losses and
+  the same exported history as the uninterrupted run; with patience 2 and
+  accs `[0.5, 0.375, 0.375, 0.375]`, interrupted after epoch 2, it stops
+  after 3 epochs like the uninterrupted run (checkpoint: epoch 2,
+  `epochs_no_improve` 2, `stopped_early` True); a checkpoint missing
+  `history` is refused. Mutations: history dropped on resume → 2 failed;
+  count reset → 1; `stopped_early` ignored → 2; never saved → 3; missing
+  state accepted → 1.
+- **Limitation found (A11):** the resumed *training* is not the same
+  computation: losses for that 4-epoch run, uninterrupted
+  `[1.8829, 1.3686, 1.0157, 0.8861]`, resumed `[1.8829, 1.3686, 0.9016, 0.8123]`.
 
 ### A5 — `input_ablation` can rebuild the wrong architecture
 - **Category:** A · **Severity:** High · **Status:** open
@@ -652,3 +684,42 @@ part of C2.
   18 passed, 1 skipped. Mutations: restoring the rename handler fails 3 tests;
   `weights_only=False` fails the unsafe-pickle test.
 
+### A10 — An early-stopped run trains again when it is re-run
+- **Category:** A · **Severity:** Medium · **Status:** **fixed** with A4 (commit: see research_log.md) (found 2026-10-19 while proposing A4)
+- **Evidence:** before the fix, `training/train.py` saved the latest
+  checkpoint at the stop epoch $e_s < E-1$ and then `break`; nothing recorded
+  that the run had stopped. Re-running the same run passed the A3 check,
+  resumed at $e_s+1$ with `epochs_no_improve = 0`, and trained up to
+  `patience` more epochs. The grid's `[SKIP]` tested only
+  `start_epoch >= epochs` (`training/ablations.py`, before A4).
+- **Root cause:** early-stopping state was not part of the checkpoint.
+- **Fix:** checkpoints store `stopped_early`; `is_finished(state, epochs)`
+  = `stopped_early or start_epoch >= epochs`; `Trainer.train_from` skips a
+  finished run and returns its saved history, in both `runner.py` and the grid.
+- **Test evidence:** `tests/test_resume_state.py`: a run that stopped
+  early after 3 of 6 epochs, re-run, makes 0 validation calls, prints
+  `[SKIP] … already finished (stopped early)`, returns the same history and
+  leaves the checkpoint at epoch 2; the same for a grid arm (A1_baseline,
+  `best_val_acc` 0.5).
+
+### A11 — A resumed run is not RNG-continuous with an uninterrupted one
+- **Category:** E · **Severity:** Medium · **Status:** open (found 2026-10-19 during A4; proposed together with E10)
+- **Evidence:** 4-epoch CPU smoke run (fake cache, 16 train / 8 val, seed 42,
+  `deterministic=False`, scripted validation), interrupted after epoch 2 and
+  resumed: epoch losses uninterrupted `[1.8829, 1.3686, 1.0157, 0.8861]`,
+  resumed `[1.8829, 1.3686, 0.9016, 0.8123]` (probe outside the repo,
+  2026-10-19).
+- **Root cause [from the code]:** no RNG state is checkpointed.
+  `build_loaders` creates the train loader with a fresh
+  `seeded_generator(seed)` on every start, so the first epoch after a
+  resume replays epoch 1's batch order; the global torch RNG (dropout,
+  `collate_fn`'s per-batch option `randperm`) restarts from `set_seed`.
+- **Proposed fix (not implemented):** save the train loader generator state
+  and `torch.get_rng_state()` (plus `torch.cuda.get_rng_state_all()` on
+  CUDA) in the checkpoint at the end of each epoch and restore them on resume;
+  all are tensors, so `weights_only=True` still loads them.
+- **Verify:** the probe above gives identical losses on CPU with
+  `deterministic=True`.
+
+### Note for every training run
+**Always commit before starting a training run; the code fingerprint ignores untracked .py files.**

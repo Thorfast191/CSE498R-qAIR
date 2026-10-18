@@ -171,6 +171,15 @@ def check_provenance(path, ckpt, provenance):
         )
 
 
+RESUME_STATE_KEYS = ("history", "epochs_no_improve", "stopped_early")
+
+
+def is_finished(state, epochs):
+    """A run is finished when it reached `epochs` or stopped early (A10)."""
+
+    return state["stopped_early"] or state["start_epoch"] >= epochs
+
+
 def load_or_resume(trainer, ckpt_dir, name, epochs, provenance):
     """
     Loads f"{name}_latest.pt" if present and restores trainer state in
@@ -181,15 +190,21 @@ def load_or_resume(trainer, ckpt_dir, name, epochs, provenance):
     code fingerprint) as this run, or CheckpointMismatchError is raised and
     the file is left untouched.
 
-    Returns (start_epoch, best_acc, resumed_history). resumed_history is
-    the contents of history.pt if present, else None.
+    Returns the resume state: start_epoch, best_acc, history (None for a
+    fresh run), epochs_no_improve and stopped_early. History and the
+    early-stopping state come from the checkpoint itself, saved together
+    with the weights, never from the exported {name}_history.pt.
     """
 
     latest_ckpt = os.path.join(ckpt_dir, f"{name}_latest.pt")
 
-    start_epoch = 0
-    best_acc = 0.0
-    resumed_history = None
+    state = {
+        "start_epoch": 0,
+        "best_acc": 0.0,
+        "history": None,
+        "epochs_no_improve": 0,
+        "stopped_early": False,
+    }
 
     print("\nCheckpoint Search:")
     print(latest_ckpt)
@@ -203,11 +218,19 @@ def load_or_resume(trainer, ckpt_dir, name, epochs, provenance):
             check_provenance(
                 best_ckpt, load_checkpoint_file(best_ckpt), provenance
             )
-        return start_epoch, best_acc, resumed_history
+        return state
 
     ckpt = load_checkpoint_file(latest_ckpt, map_location=trainer.device)
 
     check_provenance(latest_ckpt, ckpt, provenance)
+
+    missing = [k for k in RESUME_STATE_KEYS if k not in ckpt]
+
+    if missing:
+        raise CheckpointMismatchError(
+            f"{latest_ckpt} lacks the resume state {missing}; resuming it "
+            f"would discard its history or early-stopping state."
+        )
 
     print(f"\n[RESUME {name}]")
 
@@ -224,22 +247,17 @@ def load_or_resume(trainer, ckpt_dir, name, epochs, provenance):
     if ckpt.get("scaler") is not None:
         trainer.scaler.load_state_dict(ckpt["scaler"])
 
-    best_acc = ckpt.get("best_acc", 0.0)
-    start_epoch = ckpt["epoch"] + 1
+    state.update(
+        start_epoch=ckpt["epoch"] + 1,
+        best_acc=ckpt.get("best_acc", 0.0),
+        **{k: ckpt[k] for k in RESUME_STATE_KEYS},
+    )
 
-    print(f"Resuming from epoch {start_epoch}")
+    print(f"Resuming from epoch {state['start_epoch']}"
+          f" (epochs without improvement {state['epochs_no_improve']},"
+          f" stopped early {state['stopped_early']})")
 
-    # Per-run history. This used to read a single shared "history.pt",
-    # which every ablation config overwrote in turn -- so a resumed run
-    # could be handed a different config's curves.
-    history_path = os.path.join(ckpt_dir, f"{name}_history.pt")
-    if os.path.exists(history_path):
-        try:
-            resumed_history = load_checkpoint_file(history_path)
-        except Exception as e:
-            print(f"[WARN] Could not load history.pt: {e}")
-
-    return start_epoch, best_acc, resumed_history
+    return state
 
 
 def load_best(model, ckpt_dir, name, provenance, device):

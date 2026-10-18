@@ -71,6 +71,11 @@ def tiny_trainer(ckpt_dir, prov, name="qair_ARC-Easy_s42", seed=0):
     )
 
 
+def save(trainer, epoch, best_acc, best=False):
+    trainer.save_checkpoint(epoch, best_acc, history={"acc": []},
+                            epochs_no_improve=0, best=best)
+
+
 def latest(ckpt_dir, name="qair_ARC-Easy_s42"):
     return os.path.join(ckpt_dir, f"{name}_latest.pt")
 
@@ -92,7 +97,7 @@ def test_run_key_separates_arm_dataset_and_seed():
 
 def test_checkpoint_round_trips_under_weights_only(tmp_path):
     prov = provenance()
-    tiny_trainer(tmp_path, prov).save_checkpoint(epoch=0, best_acc=0.5)
+    save(tiny_trainer(tmp_path, prov), 0, 0.5)
 
     ckpt = load_checkpoint_file(latest(tmp_path))
 
@@ -103,14 +108,14 @@ def test_checkpoint_round_trips_under_weights_only(tmp_path):
 def test_resume_with_matching_provenance(tmp_path):
     prov = provenance()
     saved = tiny_trainer(tmp_path, prov, seed=1)
-    saved.save_checkpoint(epoch=3, best_acc=0.5)
+    save(saved, 3, 0.5)
 
     fresh = tiny_trainer(tmp_path, prov, seed=2)
-    start_epoch, best_acc, _ = load_or_resume(
+    state = load_or_resume(
         fresh, str(tmp_path), "qair_ARC-Easy_s42", epochs=8, provenance=prov,
     )
 
-    assert (start_epoch, best_acc) == (4, 0.5)
+    assert (state["start_epoch"], state["best_acc"]) == (4, 0.5)
     assert torch.equal(fresh.model.weight, saved.model.weight)
 
 
@@ -123,7 +128,7 @@ def test_resume_with_matching_provenance(tmp_path):
     ("code_diff_sha256", "0" * 64),
 ])
 def test_resume_refuses_any_mismatch_and_leaves_file(tmp_path, key, value):
-    tiny_trainer(tmp_path, provenance()).save_checkpoint(epoch=3, best_acc=0.5)
+    save(tiny_trainer(tmp_path, provenance()), 3, 0.5)
     before = sha256(latest(tmp_path))
 
     with pytest.raises(CheckpointMismatchError) as err:
@@ -137,15 +142,15 @@ def test_resume_refuses_any_mismatch_and_leaves_file(tmp_path, key, value):
 
 
 def test_informational_fields_do_not_block_resume(tmp_path):
-    tiny_trainer(tmp_path, provenance()).save_checkpoint(epoch=0, best_acc=0.1)
+    save(tiny_trainer(tmp_path, provenance()), 0, 0.1)
     current = provenance(git_commit="9" * 40, torch_version="0.0", device="mps")
 
-    start_epoch, _, _ = load_or_resume(
+    state = load_or_resume(
         tiny_trainer(tmp_path, current), str(tmp_path),
         "qair_ARC-Easy_s42", epochs=8, provenance=current,
     )
 
-    assert start_epoch == 1
+    assert state["start_epoch"] == 1
 
 
 def test_old_format_checkpoint_is_refused_and_left(tmp_path):
@@ -167,7 +172,7 @@ def test_old_format_checkpoint_is_refused_and_left(tmp_path):
 
 
 def test_resume_refuses_when_code_fingerprint_unknown(tmp_path):
-    tiny_trainer(tmp_path, provenance()).save_checkpoint(epoch=0, best_acc=0.1)
+    save(tiny_trainer(tmp_path, provenance()), 0, 0.1)
 
     with pytest.raises(CheckpointMismatchError, match="git is unavailable"):
         load_or_resume(
@@ -178,7 +183,7 @@ def test_resume_refuses_when_code_fingerprint_unknown(tmp_path):
 
 def test_stale_best_is_refused_at_start_and_at_evaluation(tmp_path):
     other = provenance(seed=43)
-    tiny_trainer(tmp_path, other).save_checkpoint(epoch=2, best_acc=0.9, best=True)
+    save(tiny_trainer(tmp_path, other), 2, 0.9, best=True)
 
     with pytest.raises(CheckpointMismatchError, match="seed"):
         load_or_resume(
@@ -252,25 +257,25 @@ def repo(tmp_path):
 
 def test_docs_only_commit_still_resumes(tmp_path, repo):
     saved = provenance(**code_provenance(str(repo)))
-    tiny_trainer(tmp_path, saved).save_checkpoint(epoch=1, best_acc=0.3)
+    save(tiny_trainer(tmp_path, saved), 1, 0.3)
 
     (repo / "notes.md").write_text("final\n")
     git(repo, "commit", "-q", "-am", "docs only")
     current = provenance(**code_provenance(str(repo)))
 
     assert current["git_commit"] != saved["git_commit"]
-    start_epoch, _, _ = load_or_resume(
+    state = load_or_resume(
         tiny_trainer(tmp_path, current), str(tmp_path),
         "qair_ARC-Easy_s42", epochs=8, provenance=current,
     )
-    assert start_epoch == 2
+    assert state["start_epoch"] == 2
 
 
 @pytest.mark.parametrize("commit", [False, True], ids=["uncommitted", "committed"])
 @pytest.mark.parametrize("filename", ["model.py", "requirements.txt"])
 def test_code_change_refuses_resume(tmp_path, repo, filename, commit):
     saved = provenance(**code_provenance(str(repo)))
-    tiny_trainer(tmp_path, saved).save_checkpoint(epoch=1, best_acc=0.3)
+    save(tiny_trainer(tmp_path, saved), 1, 0.3)
 
     (repo / filename).write_text("changed\n")
     if commit:
@@ -362,7 +367,7 @@ def test_ablation_grid_refuses_checkpoint_from_other_code(tmp_path, smoke_cache,
 
     grid()
     grid()
-    assert "[SKIP] A1_baseline_ARC-Easy_s42 already finished" in capsys.readouterr().out
+    assert "[SKIP] A1_baseline_ARC-Easy_s42 already finished (1 epochs)" in capsys.readouterr().out
 
     path = latest(ckpt_dir, run_key("A1_baseline", ARC, 42))
     ckpt = load_checkpoint_file(path)

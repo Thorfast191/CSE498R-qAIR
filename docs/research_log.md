@@ -112,3 +112,29 @@ fix commit cannot name itself.
   `weights_only=False` → 1; commit compared → 2; no stale-best check → 1;
   `requirements.txt` not fingerprinted → 2).
 - **Not done:** no ARC-Easy cache, no real training.
+
+---
+
+## 2026-10-19 — A4 + A10: resume keeps history and early-stopping state
+
+- **Commit:** see the follow-up entry below.
+- **Change:** checkpoints store `history`, `epochs_no_improve`,
+  `stopped_early`; `load_or_resume` returns the full state from the
+  checkpoint (no `_history.pt` read, no catch-all warning); `Trainer.train`
+  continues history and count; `Trainer.train_from` skips finished runs
+  (all epochs, or stopped early) in `runner.py` and the grid;
+  `run_training(patience=…)`. Files: `training/train.py`,
+  `training/checkpoint.py`, `training/runner.py`, `training/ablations.py`,
+  `tests/test_resume_state.py` (new), `tests/test_checkpoint_provenance.py`
+  (new signatures), CLAUDE.md (commit-before-training note).
+- **Environment:** `qenv` scratch venv as for A3.
+- **Results:** `python -m pytest tests/test_resume_state.py -q` → 5 passed
+  in 18.24 s; `python -m pytest tests -q` → 56 passed, 1 skipped in 23.74 s.
+  Mutations: history dropped → 2 failed; count reset → 1; `stopped_early`
+  ignored → 2; never saved → 3; missing state accepted → 1.
+- **New issue logged:** A11. Probe (scratch test outside the repo; fake cache,
+  16/8, seed 42, CPU, `deterministic=False`, scripted validation): 4-epoch
+  losses uninterrupted `[1.8829, 1.3686, 1.0157, 0.8861]`, interrupted after
+  epoch 2 and resumed `[1.8829, 1.3686, 0.9016, 0.8123]`.
+- **Note:** **Always commit before starting a training run; the code fingerprint ignores untracked .py files.**
+- **Not done:** no ARC-Easy cache, no real training.

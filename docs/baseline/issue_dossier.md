@@ -426,6 +426,12 @@ $A_n = S_n + e^{i\rho}R_n$.
   **Needs supervisor approval?** No.
 
 #### A4 Resumed training history is discarded
+- **Status:** **fixed 2026-10-19** (commit in docs/research_log.md; evidence in
+  issues.md A4). History and early-stopping state are stored in the
+  checkpoint itself rather than merged from `_history.pt`. The prediction
+  "stops at the same epoch as an uninterrupted run" holds for the
+  bookkeeping (tested with scripted validation accuracy); the training
+  computation after a resume is not identical (A11).
 - **Category / severity / blocks:** A / Medium / blocks DoD §1.6.
 - **Observation:** `A3_persistent_s42_latest.pt` is at epoch 7 but its history
   file holds 1 epoch [VERIFIED: checkpoint read]. Consistently, the grid printed
@@ -624,6 +630,33 @@ $A_n = S_n + e^{i\rho}R_n$.
   `weights_only=True` with only `TorchVersion` allow-listed, failures raise
   with the path, exception and a JSON sidecar header, and the file is never
   touched.
+
+#### A10 (new, 2026-10-19) An early-stopped run trains again when re-run
+- **Status:** **fixed 2026-10-19** with A4 (details in issues.md A10).
+- **Observation:** found while proposing A4, by reading `training/train.py`:
+  the latest checkpoint is written at the stop epoch, then the loop breaks.
+- **Root cause:** `stopped_early` was not saved, and resuming reset
+  `epochs_no_improve`.
+- **Theory:** with patience $P$ and stop epoch $e_s < E-1$, a re-run resumes
+  at $e_s + 1$ with count 0, so it trains at least $\min(P, E-1-e_s)$ more
+  epochs (more if validation accuracy improves meanwhile). The reported run
+  is then longer than the one whose stopping rule fired.
+- **Fix:** checkpoint `stopped_early`; a run is finished when
+  `stopped_early or start_epoch >= epochs`; finished runs are skipped.
+- **Verification test:** re-run an early-stopped CPU smoke run; assert 0
+  validation calls and an unchanged checkpoint (also for one grid arm).
+- **Risks:** none. **Needs supervisor approval?** No.
+
+#### A11 (new, 2026-10-19) A resumed run is not RNG-continuous
+- **Status:** open; proposed together with E10 (details in issues.md A11).
+- **Observation:** CPU probe, losses uninterrupted
+  `[1.8829, 1.3686, 1.0157, 0.8861]` vs resumed after epoch 2
+  `[1.8829, 1.3686, 0.9016, 0.8123]`.
+- **Root cause:** neither the DataLoader generator nor the global torch RNG
+  is checkpointed; the loader's generator is re-seeded on every start.
+- **Proposed fix:** save and restore both RNG states per epoch.
+- **Falsifiable prediction:** identical losses on CPU with `deterministic=True`.
+- **Needs supervisor approval?** No.
 
 ### Part B — Evaluation problems
 
