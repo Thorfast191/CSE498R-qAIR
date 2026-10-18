@@ -10,6 +10,7 @@ from torch.amp import autocast, GradScaler
 from config import BASE_LR, NEW_LR, WEIGHT_DECAY
 
 from training.checkpoint import CHECKPOINT_FORMAT, is_finished
+from training.seed import capture_rng_state
 from training.losses import compute_loss
 from training.evaluate import evaluate, batch_to_model
 
@@ -99,6 +100,8 @@ class Trainer:
         history, epochs_no_improve and stopped_early are saved with the
         weights so a resume continues the same curves and the same
         early-stopping count, and an early-stopped run stays finished.
+        The RNG state is captured here, after validation, which also
+        draws from the global torch RNG.
         """
 
         filename = f"{self.name}_best.pt" if best else f"{self.name}_latest.pt"
@@ -120,6 +123,9 @@ class Trainer:
                 "history": history,
                 "epochs_no_improve": epochs_no_improve,
                 "stopped_early": stopped_early,
+                "rng": capture_rng_state(
+                    getattr(self.train_loader, "generator", None)
+                ),
             },
             path,
         )

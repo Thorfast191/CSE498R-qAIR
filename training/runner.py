@@ -20,6 +20,8 @@ from config import (
     PHASE_SOURCE,
     MIXING,
     USE_LLM_PRIOR,
+    DETERMINISTIC,
+    DETERMINISTIC_WARN_ONLY,
     cache_filename,
     resolve_device,
 )
@@ -133,6 +135,7 @@ def run_training(
     mixing=MIXING,
     use_llm_prior=USE_LLM_PRIOR,
     use_attack=True,
+    deterministic_warn_only=DETERMINISTIC_WARN_ONLY,
 ):
     """
     name is the arm label; the checkpoint key is run_key(name, arc_config,
@@ -145,7 +148,7 @@ def run_training(
     print(f"qAIR-v45.1 TRAINING  ({arc_config})  run {run_name}")
     print("=" * 60)
 
-    set_seed(seed)
+    set_seed(seed, deterministic=DETERMINISTIC, warn_only=deterministic_warn_only)
 
     train_loader, val_loader, test_loader = build_loaders(
         cache_dir, train_samples, val_samples, seed=seed,
@@ -181,6 +184,7 @@ def run_training(
         model_config=model_config,
         train_config=training_config(
             epochs, patience, WEIGHT_DECAY, train_samples, val_samples,
+            deterministic_warn_only,
         ),
         train_loader=train_loader,
         val_loader=val_loader,

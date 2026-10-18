@@ -287,6 +287,13 @@ LABEL_SMOOTHING = 0.05
 
 SEED = 42
 
+# E10: training runs force deterministic kernels; an op without a
+# deterministic implementation raises. DETERMINISTIC_WARN_ONLY (CLI:
+# --deterministic-warn-only) downgrades that to a warning. Both are part
+# of the training config compared on resume.
+DETERMINISTIC = True
+DETERMINISTIC_WARN_ONLY = False
+
 # Seeds for the multi-seed evaluation protocol. Single-run differences on
 # ARC-Challenge's 299-example validation split have SE ~2.7pt, so 1-3
 # point gaps between ablation arms are indistinguishable from seed noise.

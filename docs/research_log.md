@@ -175,3 +175,29 @@ fix commit cannot name itself.
   → 1 failed; no contradiction check → 1; no data check → 1; altered stored
   config → 3.
 - **Not done:** no ARC-Easy cache, no real training.
+
+---
+
+## 2026-10-19 — E10 + A11: deterministic training; resume restores every RNG stream
+
+- **Commit:** see the follow-up entry below.
+- **Change:** `config.DETERMINISTIC = True` / `DETERMINISTIC_WARN_ONLY =
+  False`; `set_seed(…, deterministic, warn_only)` sets
+  `CUBLAS_WORKSPACE_CONFIG` if unset and the torch determinism flags both
+  ways; `--deterministic-warn-only` in `main.py`; both flags in the
+  provenance training config. Checkpoints store `rng` (python, numpy, torch,
+  CUDA, train-loader generator), restored on resume and required. The grid
+  re-seeds the shared loader generator per arm. Files: `config.py`,
+  `main.py`, `training/seed.py`, `training/checkpoint.py`,
+  `training/train.py`, `training/runner.py`, `training/ablations.py`,
+  `tests/test_determinism_resume.py` (new).
+- **Environment:** `qenv` scratch venv as for A3 (CPU only).
+- **Results:** `python -m pytest tests/test_determinism_resume.py -q` →
+  8 passed in 21.04 s; `python -m pytest tests -q` → 74 passed, 1 skipped in
+  49.63 s. The A11 probe (4 epochs, interrupted at the third validation)
+  now matches the uninterrupted run in every history value and in the
+  final weights. Seven mutations each fail ≥ 1 test.
+- **Pending (Step 6 notebook, T4):** two same-seed 1-epoch runs + per-example
+  prediction diff; print any op that raises under strict mode; check
+  `lightning.gpu` for its own nondeterminism.
+- **Not done:** no ARC-Easy cache, no real training.

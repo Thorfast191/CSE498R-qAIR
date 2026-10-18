@@ -626,11 +626,40 @@ as measurement only; D5 in Phase 4; C6/C7 for the supervisor).
 - **Verify:** at n=570 ECE is either clearly above the ≈0.05 noise floor or not.
 
 ### E10 — Training is non-deterministic by default
-- **Category:** E · **Severity:** Medium · **Status:** open
+- **Category:** E · **Severity:** Medium · **Status:** **fixed on CPU** (commit: see research_log.md); T4 check pending (Step 6)
 - **Evidence:** `[SEED] Set to 42 (deterministic=False)` (cells 10, 39);
   `training/seed.py:8`; no caller passes `deterministic=True` (grep).
 - **Proposed fix:** `deterministic=True` for reported runs; record it in the manifest.
 - **Verify:** two same-seed T4 smoke runs give identical predictions.
+- **Fix (2026-10-19, decisions approved 2026-10-19):**
+  1. `config.DETERMINISTIC = True`, `config.DETERMINISTIC_WARN_ONLY = False`;
+     `main.py`, `run_training` and `run_ablation_suite` call
+     `set_seed(seed, deterministic=True, warn_only=…)`, i.e.
+     `torch.use_deterministic_algorithms(True)`: an op without a
+     deterministic implementation **raises**. `--deterministic-warn-only`
+     (and `deterministic_warn_only=` on both functions) switches to
+     `warn_only=True`;
+  2. `set_seed` sets `CUBLAS_WORKSPACE_CONFIG=:4096:8` first, only if unset,
+     before any cuBLAS handle exists; it always sets
+     `cudnn.deterministic` / `benchmark=False` and the deterministic-algorithms
+     flag explicitly (both ways), so modes do not leak between calls;
+  3. `training_config` records `deterministic` and `deterministic_warn_only`
+     (compared on resume, visible in every checkpoint and result);
+     `cublas_workspace_config` is recorded for information.
+  - Evaluation scripts (`input_ablation`, `baselines`) keep
+    `set_seed(0)` with the default `deterministic=False`.
+- **Test evidence:** `tests/test_determinism_resume.py` (CPU): strict and
+  warn-only modes set the torch flags; `CUBLAS_WORKSPACE_CONFIG` is set when
+  unset and kept when set; two same-seed 2-epoch runs give identical
+  histories, bit-identical weights and identical per-example validation
+  records; the mode is recorded, and resuming with
+  `deterministic_warn_only=True` raises.
+- **Step 6 notebook (T4) must:** run two same-seed 1-epoch smoke runs and
+  diff their per-example validation predictions; print any operation that
+  raises under strict deterministic mode (then decide whether to rerun with
+  `--deterministic-warn-only`, which is recorded and compared). The
+  PennyLane `lightning.gpu` device is outside torch's determinism controls
+  and may have its own nondeterminism [ASSUMPTION]; that run checks it.
 
 ### E11 — Environment not pinned; resolver conflicts in the v46 run
 - **Category:** E · **Severity:** Medium · **Status:** open
@@ -734,7 +763,7 @@ part of C2.
   `best_val_acc` 0.5).
 
 ### A11 — A resumed run is not RNG-continuous with an uninterrupted one
-- **Category:** E · **Severity:** Medium · **Status:** open (found 2026-10-19 during A4). **Decision 2026-10-19:** fixed together with E10, keeps its own ID; scope: python, numpy, torch CPU/CUDA RNG and the DataLoader generator/epoch, so a resumed run equals an uninterrupted one.
+- **Category:** E · **Severity:** Medium · **Status:** **fixed** with E10 (commit: see research_log.md) (found 2026-10-19 during A4). **Decision 2026-10-19:** fixed together with E10, keeps its own ID; scope: python, numpy, torch CPU/CUDA RNG and the DataLoader generator/epoch, so a resumed run equals an uninterrupted one.
 - **Evidence:** 4-epoch CPU smoke run (fake cache, 16 train / 8 val, seed 42,
   `deterministic=False`, scripted validation), interrupted after epoch 2 and
   resumed: epoch losses uninterrupted `[1.8829, 1.3686, 1.0157, 0.8861]`,
@@ -751,6 +780,30 @@ part of C2.
   all are tensors, so `weights_only=True` still loads them.
 - **Verify:** the probe above gives identical losses on CPU with
   `deterministic=True`.
+- **Fix (2026-10-19):**
+  1. `training.seed.capture_rng_state(loader_generator)` /
+     `restore_rng_state`: python `random`, numpy (state array stored as an
+     int64 tensor), torch CPU, CUDA (when available) and the train loader's
+     generator; all reload under `weights_only=True`;
+  2. every checkpoint stores `rng`, captured in `save_checkpoint` after
+     validation (which also draws from the global torch RNG);
+     `load_or_resume` restores it; a checkpoint without `rng` is refused
+     (format stays 2, approved);
+  3. the grid re-seeds the shared train loader's generator per arm, so an
+     arm's batch order no longer depends on which arms ran or were skipped
+     before it in the same session (found while implementing: the loaders
+     are built once per seed and shared by every arm).
+- **Test evidence:** `tests/test_determinism_resume.py`: the A4 probe
+  (4 epochs, interrupted at the third validation, resumed) now gives a
+  history **equal** to the uninterrupted run in every metric, and
+  bit-identical final weights (real validation, not scripted); RNG state
+  saved and reloaded with `weights_only=True` reproduces python, numpy,
+  torch and generator draws; a checkpoint without `rng` is refused;
+  `A2_validator` after `A1_baseline` has the same history as alone.
+  Mutations (restore skipped; loader state not saved; torch state not
+  restored; numpy not restored; no per-arm re-seed; warn-only not recorded;
+  `DETERMINISTIC = False`) each fail ≥ 1 test. Full suite: 74 passed,
+  1 skipped.
 
 ### Note for every training run
 **Always commit before starting a training run; the code fingerprint ignores untracked .py files.**

@@ -1,6 +1,9 @@
 import argparse
 
-from config import CACHE_DIR, CKPT_DIR, SEED, SEEDS, ARC_CONFIG
+from config import (
+    CACHE_DIR, CKPT_DIR, SEED, SEEDS, ARC_CONFIG, DETERMINISTIC,
+    DETERMINISTIC_WARN_ONLY,
+)
 from training.seed import set_seed
 from training.runner import run_training
 from training.ablations import run_ablation_suite, ABLATIONS
@@ -40,11 +43,19 @@ def main():
         help="Skip held-out test evaluation (validation only).",
     )
 
+    parser.add_argument(
+        "--deterministic-warn-only", action="store_true",
+        default=DETERMINISTIC_WARN_ONLY,
+        help="Warn instead of raising when an op has no deterministic "
+             "implementation (recorded in the checkpoint provenance).",
+    )
+
     args = parser.parse_args()
 
     # set_seed lived in training/seed.py for the project's whole history
     # and was never called from anywhere, so no run was reproducible.
-    set_seed(args.seed)
+    set_seed(args.seed, deterministic=DETERMINISTIC,
+             warn_only=args.deterministic_warn_only)
 
     if args.mode == "train":
 
@@ -52,6 +63,7 @@ def main():
             seed=args.seed,
             with_test=not args.no_test,
             arc_config=args.arc_config,
+            deterministic_warn_only=args.deterministic_warn_only,
         )
 
     elif args.mode == "ablation":
@@ -63,6 +75,7 @@ def main():
             with_test=not args.no_test,
             arc_config=args.arc_config,
             configs=args.configs,
+            deterministic_warn_only=args.deterministic_warn_only,
         )
 
 

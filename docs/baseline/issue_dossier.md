@@ -652,7 +652,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** none. **Needs supervisor approval?** No.
 
 #### A11 (new, 2026-10-19) A resumed run is not RNG-continuous
-- **Status:** open; to be fixed together with E10, own ID (decision 2026-10-19; details in issues.md A11).
+- **Status:** **fixed 2026-10-19** with E10 (commit in docs/research_log.md; details in issues.md A11). The falsifiable prediction held on CPU: identical histories and weights after resume.
 - **Observation:** CPU probe, losses uninterrupted
   `[1.8829, 1.3686, 1.0157, 0.8861]` vs resumed after epoch 2
   `[1.8829, 1.3686, 0.9016, 0.8123]`.
@@ -1117,6 +1117,11 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** none. **Needs supervisor approval?** No.
 
 #### E10 (new) Training is non-deterministic by default
+- **Status:** **fixed on CPU 2026-10-19** (commit in docs/research_log.md;
+  evidence in issues.md E10). **Change from the proposal below:** strict by
+  default (`warn_only=False`); `--deterministic-warn-only` opts into
+  warnings and is recorded and compared. The T4 prediction is still
+  untested: the Step 6 notebook runs it and checks `lightning.gpu`.
 - **Category / severity / blocks:** E / Medium / DoD §1.5 (same seed ⇒ same predictions).
 - **Observation:** `[SEED] Set to 42 (deterministic=False)` (cells 10, 39); the
   circuit ran on `lightning.gpu` (cell 22) [OBSERVED].

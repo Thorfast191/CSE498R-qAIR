@@ -11,6 +11,8 @@ from config import (
     SEEDS,
     ARC_CONFIG,
     MODEL_DIM,
+    DETERMINISTIC,
+    DETERMINISTIC_WARN_ONLY,
     EMBEDDING_DIM as DIM,
     resolve_device,
 )
@@ -189,6 +191,7 @@ def run_ablation_suite(
     configs=None,
     train_samples=None,
     val_samples=None,
+    deterministic_warn_only=DETERMINISTIC_WARN_ONLY,
 ):
     """
     Runs every config under every seed.
@@ -215,7 +218,7 @@ def run_ablation_suite(
 
     for seed in seeds:
 
-        set_seed(seed)
+        set_seed(seed, deterministic=DETERMINISTIC, warn_only=deterministic_warn_only)
 
         train_loader, val_loader, test_loader = build_loaders(
             cache_dir, train_samples=train_samples, val_samples=val_samples,
@@ -232,7 +235,12 @@ def run_ablation_suite(
             print(f"Running {run_name}")
             print(f"Config: {resolve_config(cfg)}")
 
-            set_seed(seed)
+            set_seed(seed, deterministic=DETERMINISTIC, warn_only=deterministic_warn_only)
+
+            # The loaders are shared by every arm of this seed. Re-seeding
+            # the shuffling generator per arm makes an arm's batch order
+            # independent of which arms ran (or were skipped) before it.
+            train_loader.generator.manual_seed(seed)
 
             model = build_model(cfg, n_qubits=n_qubits)
 
@@ -263,6 +271,7 @@ def run_ablation_suite(
                 },
                 train_config=training_config(
                     epochs, patience, wd, train_samples, val_samples,
+                    deterministic_warn_only,
                 ),
                 train_loader=train_loader,
                 val_loader=val_loader,

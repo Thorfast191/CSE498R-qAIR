@@ -5,7 +5,10 @@ import subprocess
 
 import torch
 
-from config import BASE_LR, BATCH_SIZE, CACHE_VERSION, LABEL_SMOOTHING, NEW_LR
+from config import (
+    BASE_LR, BATCH_SIZE, CACHE_VERSION, DETERMINISTIC, LABEL_SMOOTHING, NEW_LR,
+)
+from training.seed import restore_rng_state
 
 
 # Format 1 (v46 and earlier): epoch, best_acc, model, optimizer, scheduler,
@@ -21,7 +24,9 @@ CODE_PATHSPECS = ("*.py", "requirements.txt")
 
 # Recorded for the reader, never compared: the full commit changes with
 # docs-only commits, and the device does not define the run.
-INFORMATIONAL_KEYS = ("git_commit", "torch_version", "device")
+INFORMATIONAL_KEYS = (
+    "git_commit", "torch_version", "device", "cublas_workspace_config",
+)
 
 
 class CheckpointMismatchError(RuntimeError):
@@ -91,10 +96,13 @@ def code_provenance(repo_root=None):
     }
 
 
-def training_config(epochs, patience, weight_decay, train_samples, val_samples):
+def training_config(epochs, patience, weight_decay, train_samples, val_samples,
+                    deterministic_warn_only):
     """The optimization settings that change the weights a run produces."""
 
     return {
+        "deterministic": DETERMINISTIC,
+        "deterministic_warn_only": deterministic_warn_only,
         "epochs": epochs,
         "patience": patience,
         "batch_size": BATCH_SIZE,
@@ -131,6 +139,7 @@ def run_provenance(arm, arc_config, seed, model_config, train_config,
         **code_provenance(repo_root),
         "torch_version": str(torch.__version__),
         "device": str(device),
+        "cublas_workspace_config": os.environ.get("CUBLAS_WORKSPACE_CONFIG"),
     }
 
     return json.loads(json.dumps(provenance))
@@ -171,7 +180,7 @@ def check_provenance(path, ckpt, provenance):
         )
 
 
-RESUME_STATE_KEYS = ("history", "epochs_no_improve", "stopped_early")
+RESUME_STATE_KEYS = ("history", "epochs_no_improve", "stopped_early", "rng")
 
 
 def is_finished(state, epochs):
@@ -191,9 +200,11 @@ def load_or_resume(trainer, ckpt_dir, name, epochs, provenance):
     the file is left untouched.
 
     Returns the resume state: start_epoch, best_acc, history (None for a
-    fresh run), epochs_no_improve and stopped_early. History and the
+    fresh run), epochs_no_improve, stopped_early and rng. History and the
     early-stopping state come from the checkpoint itself, saved together
-    with the weights, never from the exported {name}_history.pt.
+    with the weights, never from the exported {name}_history.pt. The RNG
+    streams (python, numpy, torch, CUDA, train loader) are restored, so the
+    resumed epochs are the epochs an uninterrupted run would train (A11).
     """
 
     latest_ckpt = os.path.join(ckpt_dir, f"{name}_latest.pt")
@@ -204,6 +215,7 @@ def load_or_resume(trainer, ckpt_dir, name, epochs, provenance):
         "history": None,
         "epochs_no_improve": 0,
         "stopped_early": False,
+        "rng": None,
     }
 
     print("\nCheckpoint Search:")
@@ -229,7 +241,7 @@ def load_or_resume(trainer, ckpt_dir, name, epochs, provenance):
     if missing:
         raise CheckpointMismatchError(
             f"{latest_ckpt} lacks the resume state {missing}; resuming it "
-            f"would discard its history or early-stopping state."
+            f"would discard its history, early-stopping state or RNG state."
         )
 
     print(f"\n[RESUME {name}]")
@@ -251,6 +263,10 @@ def load_or_resume(trainer, ckpt_dir, name, epochs, provenance):
         start_epoch=ckpt["epoch"] + 1,
         best_acc=ckpt.get("best_acc", 0.0),
         **{k: ckpt[k] for k in RESUME_STATE_KEYS},
+    )
+
+    restore_rng_state(
+        ckpt["rng"], getattr(trainer.train_loader, "generator", None)
     )
 
     print(f"Resuming from epoch {state['start_epoch']}"
