@@ -1149,8 +1149,8 @@ $A_n = S_n + e^{i\rho}R_n$.
   **Needs supervisor approval?** No.
 
 #### E11 (new) Environment not pinned; resolver conflicts in the v46 run
-- **Status:** **fixed 2026-10-19 except the torch pin** (commit in
-  docs/research_log.md; evidence in issues.md E11). Startup pin check for
+- **Status:** **fixed 2026-10-19 except the torch pin** in `4c4a766`
+  (evidence in issues.md E11). Startup pin check for
   runtime packages (raises; recorded override), environment in provenance
   (torch, CUDA, pennylane, lightning compared on resume; the rest
   recorded), package list per run. The torch pin comes from the Step 6 T4

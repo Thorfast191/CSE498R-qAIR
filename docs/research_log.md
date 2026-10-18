@@ -206,7 +206,7 @@ fix commit cannot name itself.
 
 ## 2026-10-19 — E11: environment checked at startup and recorded
 
-- **Commit:** see the follow-up entry below.
+- **Commit:** `4c4a766`.
 - **Change:** `training/environment.py` (pin check for runtime packages,
   environment record, package list, `describe`); provenance `environment`
   (compared) / `environment_info` and `pin_check` (recorded);

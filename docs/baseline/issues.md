@@ -662,7 +662,7 @@ as measurement only; D5 in Phase 4; C6/C7 for the supervisor).
   and may have its own nondeterminism [ASSUMPTION]; that run checks it.
 
 ### E11 — Environment not pinned; resolver conflicts in the v46 run
-- **Category:** E · **Severity:** Medium · **Status:** **fixed except the torch pin** (commit: see research_log.md); torch pin pending (Step 6)
+- **Category:** E · **Severity:** Medium · **Status:** **fixed except the torch pin** in `4c4a766`; torch pin pending (Step 6)
 - **Evidence:** cell 8: `huggingface-hub 0.33.4` incompatible with
   `diffusers 0.39.0` / `gradio 6.20.0`; cell 10: PennyLane warns about JAX
   0.7.2 > 0.6.2; `requirements.txt:1` leaves torch unpinned.
