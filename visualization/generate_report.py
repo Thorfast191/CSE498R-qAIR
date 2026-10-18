@@ -1,7 +1,8 @@
 import os
-import torch
 import pandas as pd
 import matplotlib.pyplot as plt
+
+from training.checkpoint import load_checkpoint_file
 
 
 def generate_report(history_path, export_dir):
@@ -12,7 +13,7 @@ def generate_report(history_path, export_dir):
     # LOAD HISTORY
     # ====================================================
 
-    history = torch.load(history_path, map_location="cpu")
+    history = load_checkpoint_file(history_path)
 
     epochs = list(range(1, len(history["acc"]) + 1))
 

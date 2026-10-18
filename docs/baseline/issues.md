@@ -126,7 +126,7 @@ this repo decides.
 - **Proposed fix / verify:** As for A1. Record trainable-parameter counts per arm.
 
 ### A3 — Single-run name lacks the seed; resume ignores the config
-- **Category:** A · **Severity:** High · **Status:** open
+- **Category:** A · **Severity:** High · **Status:** **fixed** (commit: see research_log.md)
 - **Evidence:** `training/runner.py:125` sets `name="qair_v45.1"`.
   `training/checkpoint.py:15,25-46` loads `{name}_latest.pt` with no seed or
   config check. `--mode train --seed 43` after a seed-42 run therefore resumes
@@ -146,6 +146,58 @@ this repo decides.
   explicitly with `weights_only=True` (allow-listing only plain, safe types),
   never fall back to `weights_only=False`, and test that a saved checkpoint
   reloads under that setting.
+- **Fix (2026-10-19, decisions approved 2026-10-19):**
+  1. run key `run_key(arm, arc_config, seed)` = `f"{arm}_{arc_config}_s{seed}"`
+     for `--mode train` (arm `"qair"`, was `"qair_v45.1"`) and for every
+     grid arm (was `f"{name}_s{seed}"`);
+  2. checkpoint format 2 adds `format` and `provenance`: arm, dataset, seed,
+     resolved model config (grid: plus `n_qubits`), training config (epochs,
+     patience, batch size, both learning rates, weight decay, label
+     smoothing, requested train/val sizes), cache version, actual train/val
+     sizes, train and validation `hypotheses_sha256`, a **code fingerprint**
+     and, for information only, the full git commit, torch version and device;
+  3. code fingerprint (replaces a commit check, so a docs-only commit does
+     not block a resume): `code_sha256` = sha256 over sorted paths and
+     working-tree contents of tracked `*.py` and `requirements.txt`, plus
+     `code_diff_sha256` = sha256 of `git diff HEAD` over the same files
+     (None when clean). Both are compared. Untracked `.py` files are not
+     covered. Without git both are None and a resume refuses;
+  4. `load_or_resume` and `load_best` raise `CheckpointMismatchError` on any
+     compared difference (each key with checkpoint and current value), on a
+     format-1 file at the run's path ("never resumed, never overwritten"),
+     and on a `_best.pt` without a `_latest.pt` whose provenance differs
+     (it would otherwise be overwritten or evaluated as this run). The file
+     is left untouched. The grid's `[SKIP]` now requires matching provenance;
+  5. one loader, `training.checkpoint.load_checkpoint_file`
+     (`weights_only=True`, no allow-list, never `False`), at all 7 sites
+     above plus `evaluation/stats.py` (results) and
+     `visualization/generate_report.py` (history). All 21 v46 files in
+     `ckpt/` load this way without an allow-list.
+  - No tensor shape changes. Format-1 checkpoints still load for
+    evaluation (rule 9); they are only refused for resume.
+  - `Trainer` and `load_or_resume` now require `provenance`, so the
+    `Trainer` / `load_or_resume` cells of `notebooks/qAIR_v46.ipynb` no
+    longer run. The notebook is left untouched as historical evidence
+    (decision 2026-10-19); a new notebook comes in step 6.
+  - Not done here: the resumed history is still discarded (A4);
+    `input_ablation` still falls back to a default config (A5).
+- **Test evidence:** `tests/test_checkpoint_provenance.py` 28 passed (CPU,
+  torch 2.14.1, pennylane 0.42.3, pennylane-lightning 0.42.0): round trip
+  under `weights_only=True`; matching provenance resumes; a change in seed,
+  model config, training config, train hash, `code_sha256` or
+  `code_diff_sha256` each raises and leaves the file byte-identical; commit,
+  torch version and device alone do not block; format-1 file, unknown code
+  fingerprint and stale best each raise; a pickle whose `__reduce__` creates
+  a file is refused and the file is not created; 5 v46 files load. In a
+  temporary git repo, a docs-only commit still resumes; a change to a `.py`
+  file or `requirements.txt`, committed or not, refuses. Real model on a fake
+  29-question cache, 16 train / 8 val, 1 epoch, CPU: seeds 42 and 43 give
+  `qair_ARC-Easy_s42` / `_s43` with epoch-1 train loss 1.8829 / 2.6331; a
+  grid arm (A1_baseline) re-run with matching provenance prints `[SKIP]`, and
+  with a tampered `code_sha256` raises with the file unchanged. Full suite:
+  51 passed, 1 skipped. Mutations (seed-free key; no-op check;
+  `weights_only=False`; commit compared; no stale-best check at start;
+  `requirements.txt` not fingerprinted) each fail ≥ 1 test.
 
 ### A4 — Resumed training history discarded and overwritten
 - **Category:** A · **Severity:** Medium · **Status:** open
@@ -486,7 +538,11 @@ Fix-order placement: dossier §3 (A8 with A3; E10/E11 with E6; B11 in Phase 3
 as measurement only; D5 in Phase 4; C6/C7 for the supervisor).
 
 ### A8 — Ablation grid resumes stale checkpoints from earlier sessions
-- **Category:** A · **Severity:** High · **Status:** open
+- **Category:** A · **Severity:** High · **Status:** **fixed going forward** with A3 (commit: see research_log.md).
+  The v46 grid numbers stay invalid; nothing re-runs them. The per-version
+  `CKPT_DIR` was **not** added (decision 2026-10-19): with the dataset in the
+  run key and the code fingerprint checked, a stale checkpoint raises
+  instead of being hidden in another directory.
 - **Evidence:** v46 run cell 39: `[RESUME A1_baseline_s42] Resuming from epoch 8 …
   [SKIP] A1_baseline_s42 already finished 8 epochs.`; A3 "Resuming from epoch 7",
   P0 "Resuming from epoch 6", F0 resumed; all from

@@ -5,6 +5,7 @@ from config import EMBEDDING_DIM, MODEL_DIM, N_QUBITS, GEN_MODES
 from models.generator import HypothesisGenerator
 from models.encoder import HypothesisEncoder
 from models.full_model import QAIRvNext
+from training.checkpoint import load_checkpoint_file
 
 TEST_SAMPLES = [
     {
@@ -133,7 +134,7 @@ def load_ablation_model(ckpt_dir, name, cfg, device, n_qubits=N_QUBITS):
 
     ckpt_path = os.path.join(ckpt_dir, f"{name}_best.pt")
 
-    ckpt = torch.load(ckpt_path, map_location="cpu")
+    ckpt = load_checkpoint_file(ckpt_path)
 
     model.load_state_dict(ckpt["model"])
 

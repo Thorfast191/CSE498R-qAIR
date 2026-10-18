@@ -16,7 +16,9 @@ from config import (
 )
 
 from training.train import Trainer
-from training.checkpoint import load_or_resume
+from training.checkpoint import (
+    load_best, load_or_resume, run_key, run_provenance, training_config,
+)
 from training.evaluate import evaluate
 from training.runner import build_loaders
 from training.seed import set_seed
@@ -224,7 +226,7 @@ def run_ablation_suite(
 
             cfg = ABLATIONS[name]
 
-            run_name = f"{name}_s{seed}"
+            run_name = run_key(name, arc_config, seed)
 
             print("\n" + "=" * 60)
             print(f"Running {run_name}")
@@ -252,6 +254,19 @@ def run_ablation_suite(
                 else WEIGHT_DECAY / 2
             )
 
+            provenance = run_provenance(
+                arm=name,
+                arc_config=arc_config,
+                seed=seed,
+                model_config={**resolved, "n_qubits": n_qubits},
+                train_config=training_config(
+                    epochs, patience, wd, train_samples, val_samples,
+                ),
+                train_loader=train_loader,
+                val_loader=val_loader,
+                device=device,
+            )
+
             trainer = Trainer(
                 model=model,
                 train_loader=train_loader,
@@ -259,11 +274,14 @@ def run_ablation_suite(
                 device=device,
                 ckpt_dir=ckpt_dir,
                 name=run_name,
+                provenance=provenance,
                 weight_decay=wd,
             )
 
+            # A finished run is skipped only when its provenance matches;
+            # a checkpoint from another session, commit or cache raises.
             start_epoch, best_acc, resumed_history = load_or_resume(
-                trainer, ckpt_dir, run_name, epochs
+                trainer, ckpt_dir, run_name, epochs, provenance
             )
 
             if start_epoch >= epochs:
@@ -293,12 +311,7 @@ def run_ablation_suite(
 
             if test_loader is not None:
 
-                best_path = os.path.join(ckpt_dir, f"{run_name}_best.pt")
-
-                if os.path.exists(best_path):
-                    model.load_state_dict(
-                        torch.load(best_path, map_location=device)["model"]
-                    )
+                load_best(model, ckpt_dir, run_name, provenance, device)
 
                 test_metrics, records = evaluate(
                     model, test_loader, device, return_records=True

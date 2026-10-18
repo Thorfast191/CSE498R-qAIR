@@ -8,6 +8,7 @@ from torch.amp import autocast, GradScaler
 
 from config import BASE_LR, NEW_LR, WEIGHT_DECAY
 
+from training.checkpoint import CHECKPOINT_FORMAT
 from training.losses import compute_loss
 from training.evaluate import evaluate, batch_to_model
 
@@ -22,6 +23,7 @@ class Trainer:
         device,
         ckpt_dir,
         name,
+        provenance,
         weight_decay=WEIGHT_DECAY,
         verbose=False,
     ):
@@ -35,6 +37,10 @@ class Trainer:
 
         self.ckpt_dir = ckpt_dir
         self.name = name
+
+        # Written into every checkpoint; load_or_resume and load_best
+        # refuse a checkpoint whose provenance differs (training/checkpoint.py).
+        self.provenance = provenance
 
         self.verbose = verbose
 
@@ -94,6 +100,8 @@ class Trainer:
 
         torch.save(
             {
+                "format": CHECKPOINT_FORMAT,
+                "provenance": self.provenance,
                 "epoch": epoch,
                 "best_acc": best_acc,
                 "model": self.model.state_dict(),

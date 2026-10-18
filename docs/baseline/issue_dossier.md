@@ -384,6 +384,11 @@ $A_n = S_n + e^{i\rho}R_n$.
   **Needs supervisor approval?** No (no forward-path change).
 
 #### A3 Run name lacks the seed; resume ignores config
+- **Status:** **fixed 2026-10-19** (commit in docs/research_log.md; evidence in
+  issues.md A3). **Change from the proposal below:** resume compares a code
+  fingerprint (sha256 of tracked `*.py` + `requirements.txt` contents, plus
+  the dirty-diff hash) instead of the git commit, which is recorded for
+  information only, so a docs-only commit does not block a resume.
 - **Category / severity / blocks:** A / High / blocks multi-seed runs (DoD §4.1).
 - **Observation:** a single-run name has no seed (`name="qair_v45.1"`,
   `training/runner.py:125`). The same name-keyed resume mechanism produced the
@@ -578,6 +583,9 @@ $A_n = S_n + e^{i\rho}R_n$.
   **Needs supervisor approval?** **Yes**, it changes the training objective.
 
 #### A8 (new) The ablation grid resumes stale checkpoints from earlier sessions
+- **Status:** **fixed going forward 2026-10-19** with A3. The per-version
+  `ckpt/{dataset}/{commit_short}/` directory was not added (decision
+  2026-10-19); stale checkpoints fail the provenance check instead.
 - **Category / severity / blocks:** A / High / invalidates the v46 grid; blocks the ablation runs.
 - **Observation [OBSERVED cell 39]:** `[RESUME A1_baseline_s42] Resuming from
   epoch 8 … [SKIP] A1_baseline_s42 already finished 8 epochs.`; A3

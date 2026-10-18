@@ -46,6 +46,7 @@ from config import (
     ARC_CONFIG,
     resolve_device,
 )
+from training.checkpoint import load_checkpoint_file
 from training.dataset import QAIRDataset, collate_fn
 from training.evaluate import batch_to_model
 from training.seed import set_seed
@@ -252,14 +253,14 @@ def main():
     cfg_path = args.config or args.ckpt.replace("_best.pt", "_config.pt")
 
     if os.path.exists(cfg_path):
-        cfg = torch.load(cfg_path, map_location="cpu")
+        cfg = load_checkpoint_file(cfg_path)
     else:
         print(f"[WARN] no config at {cfg_path}; assuming full hybrid")
         cfg = {"use_quantum": True, "use_validator": True, "persistent_steps": 3}
 
     model = build_model_from_config(cfg, device)
 
-    model.load_state_dict(torch.load(args.ckpt, map_location=device)["model"])
+    model.load_state_dict(load_checkpoint_file(args.ckpt, map_location=device)["model"])
 
     ds = QAIRDataset(
         split=args.split, max_samples=args.max_samples,

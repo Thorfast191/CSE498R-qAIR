@@ -26,6 +26,8 @@ import math
 
 import torch
 
+from training.checkpoint import load_checkpoint_file
+
 
 def bootstrap_ci(records, n_boot=10000, alpha=0.05, seed=0):
     """
@@ -147,7 +149,7 @@ def main():
     parser.add_argument("--baseline", type=str, default=None)
     args = parser.parse_args()
 
-    compare_arms(torch.load(args.results, map_location="cpu"), baseline=args.baseline)
+    compare_arms(load_checkpoint_file(args.results), baseline=args.baseline)
 
 
 if __name__ == "__main__":

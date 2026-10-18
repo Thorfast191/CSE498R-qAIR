@@ -84,3 +84,31 @@ fix commit cannot name itself.
   batch zeros → 1 failed.
 - **Not done:** no ARC-Easy cache, no training.
 
+
+---
+
+## 2026-10-19 — A3 + A8: provenance-checked checkpoints
+
+- **Commit:** see the follow-up entry below.
+- **Change:** run key `f"{arm}_{arc_config}_s{seed}"`; checkpoint format 2
+  with `provenance` (config, seed, data hashes, code fingerprint; commit,
+  torch version, device informational); resume and best-checkpoint loads
+  raise `CheckpointMismatchError` on any mismatch, on a format-1 file and on
+  a stale best; every checkpoint/history/results load uses
+  `load_checkpoint_file` (`weights_only=True`). Files: `training/checkpoint.py`,
+  `training/train.py`, `training/runner.py`, `training/ablations.py`,
+  `evaluation/input_ablation.py`, `evaluation/sample_inference.py`,
+  `evaluation/stats.py`, `visualization/generate_report.py`,
+  `tests/test_checkpoint_provenance.py` (new). `notebooks/qAIR_v46.ipynb`
+  untouched; its Trainer cells no longer run (approved).
+- **Environment:** `qenv` scratch venv outside the repo; Python 3.12.12,
+  torch 2.14.1 (CPU), pennylane 0.42.3 and pennylane-lightning 0.42.0
+  installed for this item (requirements.txt pins), pytest 9.1.1; Apple M4.
+- **Results:** `python -m pytest tests/test_checkpoint_provenance.py -q` →
+  28 passed in 6.99 s; `python -m pytest tests -q` → 51 passed, 1 skipped in
+  7.71 s. Smoke runs (fake 29-question cache, 16 train / 8 val, 1 epoch, CPU,
+  `deterministic=False`): seed 42 epoch-1 train loss 1.8829, seed 43 2.6331,
+  two checkpoint files. Mutations (seed-free key → 3 failed; no-op check → 14;
+  `weights_only=False` → 1; commit compared → 2; no stale-best check → 1;
+  `requirements.txt` not fingerprinted → 2).
+- **Not done:** no ARC-Easy cache, no real training.

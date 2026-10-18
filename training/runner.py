@@ -28,7 +28,9 @@ from training.dataset import QAIRDataset, collate_fn
 from config import EMBEDDING_DIM as DIM
 
 from training.train import Trainer
-from training.checkpoint import load_or_resume
+from training.checkpoint import (
+    load_best, load_or_resume, run_key, run_provenance, training_config,
+)
 from training.evaluate import evaluate
 from training.seed import set_seed, seeded_generator
 
@@ -122,7 +124,7 @@ def run_training(
     persistent_steps=PERSISTENT_STEPS,
     n_qubits=N_QUBITS,
     seed=SEED,
-    name="qair_v45.1",
+    name="qair",
     with_test=True,
     arc_config=ARC_CONFIG,
     phase_mode=PHASE_MODE,
@@ -131,9 +133,15 @@ def run_training(
     use_llm_prior=USE_LLM_PRIOR,
     use_attack=True,
 ):
+    """
+    name is the arm label; the checkpoint key is run_key(name, arc_config,
+    seed), so a second seed or dataset never resumes the first.
+    """
+
+    run_name = run_key(name, arc_config, seed)
 
     print("=" * 60)
-    print(f"qAIR-v45.1 TRAINING  ({arc_config})")
+    print(f"qAIR-v45.1 TRAINING  ({arc_config})  run {run_name}")
     print("=" * 60)
 
     set_seed(seed)
@@ -143,24 +151,40 @@ def run_training(
         with_test=with_test, arc_config=arc_config,
     )
 
-    model = QAIRvNext(
-        dim=DIM,
-        model_dim=MODEL_DIM,
-        use_quantum=True,
-        use_validator=True,
-        persistent_steps=persistent_steps,
-        n_qubits=n_qubits,
-        phase_mode=phase_mode,
-        phase_source=phase_source,
-        mixing=mixing,
-        use_llm_prior=use_llm_prior,
-        use_attack=use_attack,
-        verbose=True,
-    ).to(device)
+    # Also saved as {run_name}_config.pt so inference can't silently load
+    # with mismatched persistent_steps / n_qubits / phase_mode ever again.
+    model_config = {
+        "use_quantum": True,
+        "use_validator": True,
+        "persistent_steps": persistent_steps,
+        "n_qubits": n_qubits,
+        "use_question": True,
+        "model_dim": MODEL_DIM,
+        "phase_mode": phase_mode,
+        "phase_source": phase_source,
+        "mixing": mixing,
+        "use_llm_prior": use_llm_prior,
+        "use_attack": use_attack,
+    }
+
+    model = QAIRvNext(dim=DIM, verbose=True, **model_config).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
 
     print(f"Parameters    : {n_params:,}")
+
+    provenance = run_provenance(
+        arm=name,
+        arc_config=arc_config,
+        seed=seed,
+        model_config=model_config,
+        train_config=training_config(
+            epochs, PATIENCE, WEIGHT_DECAY, train_samples, val_samples,
+        ),
+        train_loader=train_loader,
+        val_loader=val_loader,
+        device=device,
+    )
 
     trainer = Trainer(
         model=model,
@@ -168,11 +192,14 @@ def run_training(
         val_loader=val_loader,
         device=device,
         ckpt_dir=ckpt_dir,
-        name=name,
+        name=run_name,
+        provenance=provenance,
         weight_decay=WEIGHT_DECAY,
     )
 
-    start_epoch, best_acc, _ = load_or_resume(trainer, ckpt_dir, name, epochs)
+    start_epoch, best_acc, _ = load_or_resume(
+        trainer, ckpt_dir, run_name, epochs, provenance
+    )
 
     print(f"\nTraining from epoch {start_epoch} to {epochs}")
 
@@ -183,26 +210,9 @@ def run_training(
         patience=PATIENCE,
     )
 
-    # Save the config alongside so inference can't silently load with
-    # mismatched persistent_steps / n_qubits / phase_mode ever again.
-    config_path = os.path.join(ckpt_dir, f"{name}_config.pt")
+    config_path = os.path.join(ckpt_dir, f"{run_name}_config.pt")
     torch.save(
-        {
-            "use_quantum": True,
-            "use_validator": True,
-            "persistent_steps": persistent_steps,
-            "n_qubits": n_qubits,
-            "use_question": True,
-            "model_dim": MODEL_DIM,
-            "phase_mode": phase_mode,
-            "phase_source": phase_source,
-            "mixing": mixing,
-            "use_llm_prior": use_llm_prior,
-            "use_attack": use_attack,
-            "arc_config": arc_config,
-            "seed": seed,
-        },
-        config_path,
+        {**model_config, "arc_config": arc_config, "seed": seed}, config_path,
     )
     print(f"[CONFIG SAVED] {config_path}")
 
@@ -213,10 +223,7 @@ def run_training(
 
     if test_loader is not None:
 
-        best_path = os.path.join(ckpt_dir, f"{name}_best.pt")
-
-        if os.path.exists(best_path):
-            model.load_state_dict(torch.load(best_path, map_location=device)["model"])
+        load_best(model, ckpt_dir, run_name, provenance, device)
 
         test_metrics, records = evaluate(
             model, test_loader, device, return_records=True
@@ -228,7 +235,7 @@ def run_training(
         trainer.save_history(history)
 
         print("\n" + "=" * 60)
-        print(f"[{name}] HELD-OUT TEST acc = {test_metrics['acc']:.4f}  "
+        print(f"[{run_name}] HELD-OUT TEST acc = {test_metrics['acc']:.4f}  "
               f"pairwise_cos = {test_metrics['pairwise_cos']:.4f}  "
               f"interference = {test_metrics['interference_ratio']:.4f}")
         print("=" * 60)
