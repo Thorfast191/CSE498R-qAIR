@@ -143,6 +143,7 @@ def main():
         ds = QAIRDataset(
             split=split, max_samples=limit, cache_dir=args.cache_dir,
             arc_config=args.arc_config, gen_seed=args.gen_seed,
+            allow_build=True,
         )
 
         print(

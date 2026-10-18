@@ -72,7 +72,13 @@ class QAIRDataset(Dataset):
 
     def __init__(self, split="train", max_samples=None, cache_dir="./cache",
                  arc_config=None, modes=GEN_MODES, gen_seed=GEN_SEED,
-                 autosave_every=50):
+                 autosave_every=50, allow_build=False):
+        """
+        allow_build: only scripts/build_cache.py passes True. Every other
+        caller reads, and a cache that cannot satisfy the request (missing,
+        capped below max_samples, or incomplete with max_samples=None)
+        raises instead of silently starting hours of LLM generation.
+        """
 
         self.samples = []
 
@@ -94,6 +100,8 @@ class QAIRDataset(Dataset):
         )
 
         resume_raw_index = 0
+
+        is_complete = False
 
         # ====================================================
         # LOAD CACHE (possibly partial)
@@ -210,13 +218,24 @@ class QAIRDataset(Dataset):
                     return
 
             print(
-                f"[CACHE INCOMPLETE] Resuming build from raw index "
-                f"{resume_raw_index} ({len(self.samples)} samples so far)..."
+                f"[CACHE INCOMPLETE] {len(self.samples)} samples, "
+                f"raw_index {resume_raw_index}, complete={is_complete}"
             )
 
         else:
 
-            print(f"[CACHE MISSING] Building {split} cache "
+            print(f"[CACHE MISSING] {cache_path}")
+
+        if not allow_build:
+            self._refuse_build(
+                cache_path, split, max_samples, is_complete, resume_raw_index
+            )
+
+        if self.samples:
+            print(f"[CACHE BUILD] Resuming {split} cache from raw index "
+                  f"{resume_raw_index} ({len(self.samples)} samples so far)...")
+        else:
+            print(f"[CACHE BUILD] Building {split} cache "
                   f"({self.arc_config}) from scratch...")
 
         # ====================================================
@@ -540,6 +559,36 @@ class QAIRDataset(Dataset):
             f"that result.\n\n"
             f"  Delete or rename {cache_path} and rebuild:\n"
             f"      python scripts/build_cache.py --splits train validation\n"
+        )
+
+    # ========================================================
+    # READ-ONLY GUARD
+    # ========================================================
+
+    def _refuse_build(self, cache_path, split, max_samples, is_complete,
+                      raw_index):
+
+        if os.path.exists(cache_path):
+            seed = (self.provenance or {}).get("gen_seed", "unknown")
+            state = (
+                f"{len(self.samples)} samples stored, complete={is_complete}, "
+                f"raw_index={raw_index}, gen_seed={seed}"
+            )
+        else:
+            state = "missing"
+
+        limit = "" if max_samples is None else f" --limit {max_samples}"
+
+        raise RuntimeError(
+            f"\nThe {split} cache cannot satisfy this request, and reading a "
+            f"cache never builds one.\n"
+            f"  cache       : {cache_path}\n"
+            f"  state       : {state}\n"
+            f"  requested   : max_samples={max_samples}\n"
+            f"Read it with the cap it was built with, or build it explicitly:\n"
+            f"  python scripts/build_cache.py --splits {split}{limit} "
+            f"--arc-config {self.arc_config} "
+            f"--cache-dir {os.path.dirname(cache_path)}\n"
         )
 
     # ========================================================

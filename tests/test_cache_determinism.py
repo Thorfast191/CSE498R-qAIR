@@ -127,6 +127,7 @@ def fakes(monkeypatch):
 
 
 def build(cache_dir, **kwargs):
+    kwargs.setdefault("allow_build", True)
     return QAIRDataset(split="train", cache_dir=str(cache_dir), arc_config=ARC, **kwargs)
 
 

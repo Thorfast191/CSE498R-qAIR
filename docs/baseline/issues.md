@@ -331,7 +331,7 @@ this repo decides.
   (`config.py:141`).
 
 ### E7 — A capped cache can silently restart hours of LLM generation
-- **Severity:** Medium→High for the cache build · **Status:** open · **Phase 1, item 2 (blocks the ARC-Easy cache)**
+- **Severity:** Medium→High for the cache build · **Status:** **fixed** (commit: see research_log.md) · **Phase 1, item 2**
 - **Evidence:** `training/dataset.py:157-163` (documented in the code) and
   `evaluation/baselines.py:304-309`: calling with `max_samples=None` against a
   capped (`complete=False`) cache resumes generation. Any caller other than
@@ -340,6 +340,24 @@ this repo decides.
   `scripts/build_cache.py`; otherwise raise with the cap the cache was built with.
 - **Verify:** Loading a capped smoke cache with `max_samples=None` raises and
   never loads the LLM.
+- **Wider than first written:** a **missing** cache also built silently, so
+  training on a fresh VM without the cache would have started hours of
+  generation. Callers that could reach the build path: `training/runner.py`
+  (train/val/test), `evaluation/baselines.py` (5 call sites),
+  `evaluation/input_ablation.py`, the v46 notebook.
+- **Fix (2026-10-18):** `QAIRDataset(..., allow_build=False)`. Any request the
+  stored cache cannot satisfy (missing; capped below `max_samples`; incomplete
+  with `max_samples=None`) raises before the lock, the LLM or the dataset is
+  touched. The message gives the path, state (stored count, `complete`,
+  `raw_index`, `gen_seed`), the request and the exact `scripts/build_cache.py`
+  command. Only `scripts/build_cache.py` passes `allow_build=True`. A complete
+  cache asked for more than it holds now raises instead of being downgraded
+  (A6 will make it return the full cache).
+- **Test evidence:** `tests/test_cache_build_guard.py` (generator, encoder and
+  dataset loader replaced by functions that fail if called during reads):
+  5 passed; full suite 13 passed, 1 skipped (slow) in 3.8 s. Mutation check:
+  with `allow_build` defaulting to True (old behaviour) the three refusal
+  tests fail.
 
 ### E8 — No v45+ timing data; no tests
 - **Severity:** Medium · **Status:** open

@@ -34,3 +34,21 @@ fix commit cannot name itself.
 - **New issue logged:** A9 (any cache-load error moves the cache aside and
   rebuilds it), found when a `TorchVersion` header value failed
   `torch.load(weights_only=True)` in the first test run.
+
+---
+
+## 2026-10-18 — E7: reading a cache never builds one
+
+- **Commit:** see the follow-up entry below.
+- **Change:** `QAIRDataset(..., allow_build=False)`; a read that the stored
+  cache cannot satisfy raises with path, state, request and the build command,
+  before any lock or model is touched. `scripts/build_cache.py` passes
+  `allow_build=True`. Files: `training/dataset.py`, `scripts/build_cache.py`,
+  `tests/test_cache_determinism.py` (helper builds with `allow_build=True`),
+  `tests/test_cache_build_guard.py` (new).
+- **Environment:** same scratch venv as E3.
+- **Results:** `python -m pytest tests -q` → 13 passed, 1 skipped in 3.83 s.
+  Mutation (`allow_build` default True) → 3 failed (the three refusal tests),
+  2 passed.
+- **Not done:** no ARC-Easy cache, no training.
+

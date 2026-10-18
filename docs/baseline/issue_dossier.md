@@ -999,6 +999,8 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** none. **Needs supervisor approval?** No.
 
 #### E7 A capped cache can silently restart hours of generation
+- **Status:** **fixed 2026-10-18** (commit in docs/research_log.md; evidence in
+  issues.md E7). A missing cache was also built silently; now it raises too.
 - **Category / severity / blocks:** E / High / **blocks the ARC-Easy cache build**.
 - **Observation:** documented in the code itself [VERIFIED: `training/dataset.py:157-163`
   comment; `evaluation/baselines.py:304-309` docstring].
