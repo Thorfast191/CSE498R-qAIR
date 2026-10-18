@@ -203,7 +203,7 @@ this repo decides.
   `requirements.txt` not fingerprinted) each fail ≥ 1 test.
 
 ### A4 — Resumed training history discarded and overwritten
-- **Category:** A · **Severity:** Medium · **Status:** **fixed** (commit: see research_log.md)
+- **Category:** A · **Severity:** Medium · **Status:** **fixed** in `4083ecf`
 - **Evidence:** `training/runner.py:175` discards the resumed history
   (`start_epoch, best_acc, _ = load_or_resume(…)`). `training/train.py:132-145`
   starts a fresh `history`, and `:203` overwrites the file every epoch.
@@ -685,7 +685,7 @@ part of C2.
   `weights_only=False` fails the unsafe-pickle test.
 
 ### A10 — An early-stopped run trains again when it is re-run
-- **Category:** A · **Severity:** Medium · **Status:** **fixed** with A4 (commit: see research_log.md) (found 2026-10-19 while proposing A4)
+- **Category:** A · **Severity:** Medium · **Status:** **fixed** with A4 in `4083ecf` (found 2026-10-19 while proposing A4)
 - **Evidence:** before the fix, `training/train.py` saved the latest
   checkpoint at the stop epoch $e_s < E-1$ and then `break`; nothing recorded
   that the run had stopped. Re-running the same run passed the A3 check,

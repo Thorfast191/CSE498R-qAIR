@@ -426,7 +426,7 @@ $A_n = S_n + e^{i\rho}R_n$.
   **Needs supervisor approval?** No.
 
 #### A4 Resumed training history is discarded
-- **Status:** **fixed 2026-10-19** (commit in docs/research_log.md; evidence in
+- **Status:** **fixed 2026-10-19** in `4083ecf` (evidence in
   issues.md A4). History and early-stopping state are stored in the
   checkpoint itself rather than merged from `_history.pt`. The prediction
   "stops at the same epoch as an uninterrupted run" holds for the
@@ -632,7 +632,7 @@ $A_n = S_n + e^{i\rho}R_n$.
   touched.
 
 #### A10 (new, 2026-10-19) An early-stopped run trains again when re-run
-- **Status:** **fixed 2026-10-19** with A4 (details in issues.md A10).
+- **Status:** **fixed 2026-10-19** with A4 in `4083ecf` (details in issues.md A10).
 - **Observation:** found while proposing A4, by reading `training/train.py`:
   the latest checkpoint is written at the stop epoch, then the loop breaks.
 - **Root cause:** `stopped_early` was not saved, and resuming reset

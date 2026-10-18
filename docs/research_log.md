@@ -117,7 +117,7 @@ fix commit cannot name itself.
 
 ## 2026-10-19 — A4 + A10: resume keeps history and early-stopping state
 
-- **Commit:** see the follow-up entry below.
+- **Commit:** `4083ecf`.
 - **Change:** checkpoints store `history`, `epochs_no_improve`,
   `stopped_early`; `load_or_resume` returns the full state from the
   checkpoint (no `_history.pt` read, no catch-all warning); `Trainer.train`
