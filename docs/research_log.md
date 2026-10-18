@@ -74,7 +74,7 @@ fix commit cannot name itself.
 
 ## 2026-10-18 — A6: cache edge cases
 
-- **Commit:** see the follow-up entry below.
+- **Commit:** `0a4f464`.
 - **Change:** complete caches are final; a missing split raises; batch
   scoring failures retried per question, with per-sample `score_failed`
   reported by `report_quality`; cache version kept at 46 with a loader

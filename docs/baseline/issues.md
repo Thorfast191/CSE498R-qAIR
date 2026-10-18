@@ -171,7 +171,7 @@ this repo decides.
   accuracy.
 
 ### A6 — Cache edge cases silently change state or data
-- **Category:** A · **Severity:** Medium · **Status:** **fixed** (commit: see research_log.md)
+- **Category:** A · **Severity:** Medium · **Status:** **fixed** in `0a4f464`
 - **Evidence:** (1) `training/dataset.py:154-172` + `:437-439`: a complete cache
   smaller than `max_samples` is re-saved as `complete=False`.
   (2) `:203-209`: a missing split is silently replaced by `validation`.
