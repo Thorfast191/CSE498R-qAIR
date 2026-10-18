@@ -9,7 +9,11 @@ accepts everything cannot slip through.
 Conventions (identical to the design document):
   * K paths, basis state x in {0,1}^K, integer index sum_i x_i 2^i.
   * x_i = 1 means "path i holds"; Z_i |x> = z_i |x> with z_i = 1 - 2 x_i.
-  * H = sum_i h_i Z_i + sum_{i<j} J_ij Z_i Z_j - Gamma sum_i X_i.
+  * H1 = sum_i h_i Z_i + sum_{i<j} J_ij Z_i Z_j - Gamma sum_i X_i (stoquastic).
+  * H2 = H1 + sum_{i<j} K_ij X_i X_j (+ L_ij Y_i Y_j), signs unconstrained
+    (non-stoquastic in the world basis whenever some K_ij > 0 or L_ij != 0).
+  * Directed 0/1-basis energy E01(x) = sum_i a_i x_i + sum_{i<j} b_ij x_i x_j
+    + sum_{i != j} r_ij x_i (1 - x_j), mapped exactly to Ising (h, J, const).
   * Paths are ordered (support_0, attack_0, support_1, attack_1, ...), so
     option n has support 2n and attack 2n + 1.
   * score_n = sum_x P(x) x_sup(n) (1 - x_att(n)); p_n = (score_n + eps) / sum.
@@ -68,6 +72,55 @@ def x_sum(K):
 
 def hamiltonian(h, J, gamma, K):
     return np.diag(ising_energy(h, J, K)) - gamma * x_sum(K)
+
+
+def pair_flip(K, i, j, kind="XX"):
+    """X_i X_j or Y_i Y_j as a dense real (2^K, 2^K) matrix.
+
+    Both flip bits i and j. <x'|X_i X_j|x> = 1. Since Y|b> = i(-1)^b |1-b>,
+    <x'|Y_i Y_j|x> = i^2 (-1)^(x_i + x_j) = -z_i z_j: real, sign depends on x.
+    """
+    D = 2 ** K
+    b = bits(K)
+    M = np.zeros((D, D))
+    for x in range(D):
+        y = x ^ (1 << i) ^ (1 << j)
+        if kind == "XX":
+            M[y, x] = 1.0
+        else:
+            M[y, x] = -(1 - 2 * b[x, i]) * (1 - 2 * b[x, j])
+    return M
+
+
+def hamiltonian2(h, J, gamma, Kxx, K, Lyy=None):
+    """H2 = H1 + sum_{i<j} K_ij X_i X_j (+ L_ij Y_i Y_j)."""
+    Hm = hamiltonian(h, J, gamma, K)
+    for i in range(K):
+        for j in range(i + 1, K):
+            if Kxx[i, j] != 0:
+                Hm = Hm + Kxx[i, j] * pair_flip(K, i, j, "XX")
+            if Lyy is not None and Lyy[i, j] != 0:
+                Hm = Hm + Lyy[i, j] * pair_flip(K, i, j, "YY")
+    return Hm
+
+
+def negative_mass(psi):
+    """Amplitude mass on the minority sign, global sign fixed: in [0, 0.5]."""
+    pos, neg = (psi[psi > 0] ** 2).sum(), (psi[psi < 0] ** 2).sum()
+    return float(min(pos, neg))
+
+
+def directed_to_ising(a, b, r):
+    """Exact map of E01 = a.x + sum_{i<j} b_ij x_i x_j + sum_{i!=j} r_ij x_i(1-x_j)
+    to sum_i h_i z_i + sum_{i<j} J_ij z_i z_j + const, with x = (1 - z)/2."""
+    K = len(a)
+    c = a + r.sum(axis=1)                       # r_ij x_i contributes to x_i
+    q = np.triu(b, 1) - np.triu(r, 1) - np.triu(r.T, 1)
+    q = q + q.T                                 # symmetric, zero diagonal
+    h = -c / 2 - q.sum(axis=1) / 4
+    J = q / 4
+    const = c.sum() / 2 + np.triu(q, 1).sum() / 4
+    return h, J, const
 
 
 def answer_masks(K):
@@ -415,6 +468,174 @@ def check_degeneracy():
            np.allclose(P_a, P_b))
 
 
+def check_h2_hermitian():
+    print("\n=== 11. H2 = H1 + K XX (+ L YY) is Hermitian with the stated entries ===")
+    K = 6
+    ok_sym, ok_xx, ok_yy = True, True, True
+    b = bits(K)
+    for _ in range(10):
+        h, J, g = RNG.normal(size=K), sym(K), abs(RNG.normal())
+        Kxx, Lyy = sym(K), sym(K)
+        Hm = hamiltonian2(h, J, g, Kxx, K, Lyy)
+        ok_sym &= np.allclose(Hm, Hm.T, atol=0) and np.isrealobj(Hm)
+        i, j = 1, 4
+        XX, YY = pair_flip(K, i, j, "XX"), pair_flip(K, i, j, "YY")
+        for x in range(2 ** K):
+            y = x ^ (1 << i) ^ (1 << j)
+            ok_xx &= XX[y, x] == 1.0 and XX.sum() == 2 ** K
+            same = b[x, i] == b[x, j]
+            ok_yy &= YY[y, x] == (-1.0 if same else 1.0)
+    bad = hamiltonian(h, J, g, K) + np.triu(pair_flip(K, 0, 1, "XX"))
+    print(f"        K=6, 10 draws; YY entry = -1 where x_i = x_j, +1 where they differ")
+    report("H2 == H2^T, real (XX and YY terms included)", ok_sym, np.allclose(bad, bad.T))
+    report("<x xor e_i xor e_j| X_i X_j |x> = +1 for every x", ok_xx, False)
+    report("<x xor e_i xor e_j| Y_i Y_j |x> = -z_i z_j (both signs occur)", ok_yy, False)
+
+
+def thermal_rho(Hm, T):
+    lam, V = np.linalg.eigh(Hm)
+    w = np.exp(-(lam - lam[0]) / T)
+    return (V * w) @ V.T
+
+
+def stripped(Hm):
+    """Stoquastic counterpart: off-diagonals replaced by -|.|."""
+    D = np.diag(np.diag(Hm))
+    return D - np.abs(Hm - D)
+
+
+def check_sign_structure():
+    print("\n=== 12. Sign structure: H1 never, H2 sometimes, H2s (K <= 0) never ===")
+    K, draws, T = 8, 200, 0.5
+    neg_gs = {"H1": 0, "H2": 0, "H2s": 0}
+    neg_rho = {"H1": 0, "H2": 0, "H2s": 0}
+    tv_strip = {"H1": 0.0, "H2": []}
+    fneg_h2 = []
+    for _ in range(draws):
+        h, J, g = RNG.normal(size=K), sym(K), 0.05 + abs(RNG.normal())
+        Kxx = sym(K)
+        arms = {
+            "H1": hamiltonian(h, J, g, K),
+            "H2": hamiltonian2(h, J, g, Kxx, K),
+            "H2s": hamiltonian2(h, J, g, -np.abs(Kxx), K),
+        }
+        for name, Hm in arms.items():
+            _, _, psi = ground_state(Hm)
+            f = negative_mass(psi)
+            neg_gs[name] += f > 1e-9
+            rho = thermal_rho(Hm, T)
+            neg_rho[name] += rho.min() < -1e-12 * np.abs(rho).max()
+            if name == "H2":
+                fneg_h2.append(f)
+        P1 = np.diag(thermal_rho(arms["H1"], T)); P1 = P1 / P1.sum()
+        P1s = np.diag(thermal_rho(stripped(arms["H1"]), T)); P1s = P1s / P1s.sum()
+        tv_strip["H1"] = max(tv_strip["H1"], 0.5 * np.abs(P1 - P1s).sum())
+        P2 = np.diag(thermal_rho(arms["H2"], T)); P2 = P2 / P2.sum()
+        P2s = np.diag(thermal_rho(stripped(arms["H2"]), T)); P2s = P2s / P2s.sum()
+        tv_strip["H2"].append(0.5 * np.abs(P2 - P2s).sum())
+    fneg_h2 = np.array(fneg_h2)
+    tv2 = np.array(tv_strip["H2"])
+    print(f"        K=8, {draws} draws, T={T}: ground state with negative amplitudes "
+          f"H1 {neg_gs['H1']}/{draws}, H2 {neg_gs['H2']}/{draws}, H2s {neg_gs['H2s']}/{draws}")
+    print(f"        negative entries in exp(-H/T): H1 {neg_rho['H1']}/{draws}, "
+          f"H2 {neg_rho['H2']}/{draws}, H2s {neg_rho['H2s']}/{draws}")
+    print(f"        H2 negative amplitude mass: median {np.median(fneg_h2):.3f}, "
+          f"max {fneg_h2.max():.3f}")
+    print(f"        TV(P, P of sign-stripped H): H1 max {tv_strip['H1']:.1e}; "
+          f"H2 median {np.median(tv2):.3f}, max {tv2.max():.3f}")
+    report("H1 (stoquastic): no ground state has a negative amplitude",
+           neg_gs["H1"] == 0, neg_gs["H1"] > 0)
+    report("H2 (unconstrained K): some ground states have negative amplitudes",
+           neg_gs["H2"] > 0, neg_gs["H2"] == 0)
+    report("H2s (K <= 0, stoquastic capacity control): no negative amplitudes",
+           neg_gs["H2s"] == 0, neg_gs["H2s"] > 0)
+    report("exp(-H/T) entrywise >= 0 for H1 and H2s; negative entries occur for H2",
+           neg_rho["H1"] == 0 and neg_rho["H2s"] == 0 and neg_rho["H2"] > 0,
+           neg_rho["H2"] == 0)
+    report("signs change the readout for H2 only (sign-stripped TV: H1 = 0, H2 > 0)",
+           tv_strip["H1"] < 1e-12 and np.median(tv2) > 1e-3, tv_strip["H1"] > 1e-6)
+
+
+def check_directed_mapping():
+    print("\n=== 13. Directed 0/1-basis terms map exactly to Ising form ===")
+    K, draws, worst = 8, 50, 0.0
+    b01 = bits(K)
+    for _ in range(draws):
+        a = RNG.normal(size=K)
+        bb = sym(K)
+        r = np.abs(RNG.normal(size=(K, K)))
+        np.fill_diagonal(r, 0.0)
+        E01 = (b01 @ a
+               + np.einsum("xi,ij,xj->x", b01, np.triu(bb, 1), b01)
+               + np.einsum("xi,ij,xj->x", b01, r, 1 - b01))
+        h, J, const = directed_to_ising(a, bb, r)
+        worst = max(worst, np.max(np.abs(E01 - (ising_energy(h, J, K) + const))))
+    # control: forget the pair contribution to the fields
+    h, J, const = directed_to_ising(a, bb, r)
+    q = 4 * J
+    E_bad = ising_energy(h + q.sum(axis=1) / 4, J, K) + const
+    # asymmetry: r_01 alone vs r_10 alone give different energies
+    a0, b0 = np.zeros(K), np.zeros((K, K))
+    r01 = np.zeros((K, K)); r01[0, 1] = 1.0
+    E_01 = ising_energy(*directed_to_ising(a0, b0, r01)[:2], K) + directed_to_ising(a0, b0, r01)[2]
+    E_10 = ising_energy(*directed_to_ising(a0, b0, r01.T)[:2], K) + directed_to_ising(a0, b0, r01.T)[2]
+    x_10 = 1          # x_0 = 1, x_1 = 0: path 0 holds without path 1
+    print(f"        K=8, {draws} random (a, b, r), all 256 worlds: max |E01 - E_ising - const| = {worst:.1e}")
+    print(f"        world (x0=1, x1=0): penalty {E_01[x_10]:.2f} under r_01 = 1, "
+          f"{E_10[x_10]:.2f} under r_10 = 1")
+    report("x_i(1 - x_j) terms reproduced exactly for every world", worst < 1e-12,
+           np.max(np.abs(E01 - E_bad)) < 1e-12)
+    report("the mapped Ising form keeps the direction (r_01 != r_10)",
+           np.isclose(E_01[x_10], 1.0) and np.isclose(E_10[x_10], 0.0),
+           np.isclose(E_01[x_10], E_10[x_10]))
+
+
+def check_h2_thermal_gradient():
+    print("\n=== 14. Thermal-collapse gradient for H2 matches finite differences (K = 4) ===")
+    K, T, worst = 4, 0.6, 0.0
+    pairs = [(i, j) for i in range(K) for j in range(i + 1, K)]
+    for _ in range(5):
+        h, J, a, y = RNG.normal(size=K), sym(K), RNG.normal(), int(RNG.integers(K // 2))
+        Kxx = sym(K)
+
+        def loss(h_, J_, a_, K_):
+            P = np.diag(thermal_rho(hamiltonian2(h_, J_, softplus(a_), K_, K), T))
+            return -math.log(answer_probs(P / P.sum(), K)[1][y])
+
+        Hm = hamiltonian2(h, J, softplus(a), Kxx, K)
+        lam, V = np.linalg.eigh(Hm)
+        f = np.exp(-(lam - lam[0]) / T)
+        L = lam[:, None] - lam[None, :]
+        G = np.where(np.abs(L) > 1e-12, (f[:, None] - f[None, :]) / np.where(L == 0, 1, L),
+                     (-f / T)[:, None] * np.ones_like(L))
+        rho = (V * f) @ V.T
+        Z = np.trace(rho)
+        P = np.diag(rho) / Z
+        M = answer_masks(K)
+        s = M @ P
+        dL_dP = M.T @ (-np.eye(len(s))[y] / (s[y] + EPS) + 1.0 / (s + EPS).sum())
+
+        def directional(dH):
+            drho = V @ (G * (V.T @ dH @ V)) @ V.T
+            return dL_dP @ ((np.diag(drho) * Z - np.diag(rho) * np.trace(drho)) / Z ** 2)
+
+        z = 1 - 2 * bits(K)
+        ga = np.array([directional(np.diag(z[:, i])) for i in range(K)]
+                      + [directional(np.diag(z[:, i] * z[:, j])) for i, j in pairs]
+                      + [directional(-x_sum(K)) / (1 + math.exp(-a))]
+                      + [directional(pair_flip(K, i, j, "XX")) for i, j in pairs])
+        step = 1e-6
+        gf = list(grad_fd(lambda h_, J_, a_: loss(h_, J_, a_, Kxx), h, J, a, K, pairs, step))
+        for i, j in pairs:
+            E = np.zeros((K, K)); E[i, j] = E[j, i] = step
+            gf.append((loss(h, J, a, Kxx + E) - loss(h, J, a, Kxx - E)) / (2 * step))
+        gf = np.array(gf)
+        worst = max(worst, np.max(np.abs(ga - gf)) / np.max(np.abs(gf)))
+    print(f"        5 draws; parameters: 4 h, 6 J, 1 a, 6 K_xx; worst relative error {worst:.2e}")
+    report("H2 thermal gradient (Daleckii-Krein) == central finite differences (rel err < 1e-5)",
+           worst < 1e-5, worst > 1.0)
+
+
 def bench():
     print("\n=== Benchmark (informational): numpy.linalg.eigh, batch 16, this CPU ===")
     for K in (8, 10):
@@ -447,6 +668,10 @@ def main():
     check_marginals()
     check_entanglement()
     check_degeneracy()
+    check_h2_hermitian()
+    check_sign_structure()
+    check_directed_mapping()
+    check_h2_thermal_gradient()
     if "--bench" in sys.argv:
         bench()
     print()

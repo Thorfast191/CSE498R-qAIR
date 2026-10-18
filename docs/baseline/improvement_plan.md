@@ -533,71 +533,91 @@ pre-stated expectation of no accuracy change.
 
 ## Tier 3b — path Hamiltonian: a joint quantum state over all reasoning paths (needs approval)
 
-Full design, mathematics and numerical checks:
+Full design, mathematics, references and numerical checks:
 [`docs/baseline/path_hamiltonian_design.md`](path_hamiltonian_design.md)
-(checks: `scripts/verify_path_hamiltonian.py`, 22/22 pass). This tier is not
+(checks: `scripts/verify_path_hamiltonian.py`, 33/33 pass). This tier is not
 the same as item T3b above (the ρ = π/2 init arm); it is a separate readout.
 
 - **Fixes:** the core qAIR idea was never implemented. v46's circuit processes
   each hypothesis separately (`models/quantum_layer.py:250-254` reshapes to
-  (B·K, D) [VERIFIED]), so no quantum state spans more than one path. This
-  readout also replaces the interference collapse whose limits are C1, C2, C6
-  and C7.
+  (B·K, D) [VERIFIED]). This readout replaces the interference collapse whose
+  limits are C1, C2, C6 and C7. The per-hypothesis circuit stays upstream
+  (rule 6).
 - **Mechanism.**
   - One qubit per path (K = 2N = 8 for 4 options); a basis state is a "world"
     of paths holding or failing.
-  - H = Σ h_i Z_i + Σ J_ij Z_i Z_j − Γ Σ X_i is a 2^K × 2^K matrix, with h from a
-    unary head, J from a symmetric pairwise head (J > 0: paths exclude each
-    other; J < 0: paths agree) and Γ = softplus(γ).
-  - The answer is the probability that option n's support holds and its attack
-    fails, normalized; cross-entropy as in v46.
-  - Classical data enters the state only through h, J and the basis encoding;
-    no extra encoding stage.
-  - The per-hypothesis circuit stays upstream (rule 6).
-- **Arms (single variable Γ).**
-  - **H0:** Γ ≡ 0, the classical Ising Gibbs distribution over worlds.
-  - **H1:** Γ learned, the quantum thermal state.
-  - Both use a learned temperature T. As T → 0 the H1 collapse becomes the
-    ground state.
-  - A ground-state collapse cannot be the H0 control: at Γ = 0 its loss has zero
-    gradient almost everywhere (design check 6). The ground-state version is
-    kept as the secondary arm **H1-GS**.
-  - Base config A3 (prior off). Prior-on variants only if H1 > H0.
-- **Falsifiable prediction (pre-registered in the design, §6).** "Superposition
-  between paths helps" is supported only if all of these hold:
-  - H1 − H0 on test > 0, with the paired CI excluding 0 and H1 ahead in all 3
-    seeds;
-  - Γ stays in use (Γ/(‖J‖_F/K) ≥ 0.05 in all seeds);
-  - the ground state is entangled across supports | attacks (median > 0.01
-    nats).
+  - Energy terms come from a unary head and a **directed pair head** in the 0/1
+    basis. The pair head has symmetric co-occurrence b and one-directional
+    "i requires j" penalties r·x_i(1 − x_j). These map exactly to Ising fields
+    and couplings (design §2.1; check 13).
+  - H1 = Σ h_i Z_i + Σ J_ij Z_iZ_j − Γ Σ X_i; H2 = H1 + Σ K_ij X_iX_j with
+    unconstrained sign.
+  - Readout: the thermal state at learned T (**decision P-2 accepted**).
+  - The answer is the probability that an option's support holds and its
+    attack fails, normalized; cross-entropy as in v46.
+  - Data enters only through the energy terms and the basis encoding.
+- **Arms** (thermal readout, A3 base):
 
-  It is falsified if Γ collapses in ≥ 2 of 3 seeds, or if an adequately powered
-  test shows no gain. Expected [HYPOTHESIS]: H1 ≥ H0 by < 2 points if the cache
-  passes the gate. Even a positive result is a transverse-field relaxation of a
-  classical model (H is stoquastic), not a quantum advantage.
-- **Single-variable comparison.** H1 vs H0 (primary, α = 0.05). Secondary
-  family with Holm: H1 and H0 vs Tier 0′ A3, H1 vs LLM cloze and letter pick,
-  H1-GS vs H1. All use 3 seeds, full ARC-Easy, and test once.
-- **Prerequisites.** Tier 0, and a Tier 1 cache that passes the gate. h and J are
-  functions of the path embeddings, so by the data-processing inequality they
-  carry no answer information if the hypotheses carry none (D1). The pairwise
-  head needs more signal than a unary one. A no-signal cache would make H1 ≈ H0
-  for reasons unrelated to superposition. Recommended first: T2a (h reads the
-  validator energy) and T2c (the LR group for γ and τ).
-- **T4 cost [ASSUMPTION].** Measured on CPU (Apple M4, numpy): eigh forward
-  takes 47 ms per batch of 16 at K = 8 (256 × 256) and 1.15 s at K = 10
-  (1024 × 1024) [VERIFIED: `scripts/verify_path_hamiltonian.py --bench`]. On a
-  T4 the K = 8 overhead is assumed small against 1–3 s/step; K = 10 (5-option
-  items) may double those batches. Runs: H0, H1, H1-GS × 3 seeds × 8 epochs ≈
-  3–10 h. A CPU torch micro-benchmark comes first (design §8).
-- **Risks.** Near-degenerate ground states (handled in the design, §4.4); J not
-  learning without signal; Γ collapsing to 0 (a pre-registered outcome, not
-  prevented); overfitting the 25,220-parameter heads; over-claiming.
+  | Arm | What it is | Isolates |
+  |---|---|---|
+  | **H0** | Γ ≡ 0: classical Ising Gibbs distribution over worlds | — |
+  | **H1** | Γ learned: superposition, but stoquastic, so provably no interference between paths (Perron–Frobenius; non-negative Gibbs matrix, Bravyi et al. 2008) | H1 vs H0: superposition (claim Q) |
+  | **H2** | H1 + K_ij X_iX_j with sign unconstrained: non-stoquastic in the world basis, so amplitudes can carry signs and paths can cancel | H2 vs H1: interference (claim I) |
+  | H2s | K ≤ 0: same capacity as H2 but stoquastic | H2 vs H2s: sign vs extra capacity |
+  | H1-sym | r ≡ 0, symmetric pair terms only | directed terms (ablation) |
+  | H1-GS | ground-state readout (secondary) | readout choice |
+
+- **Falsifiable predictions (pre-registered, design §6).**
+  - **Q is supported** only if all of these hold:
+    - H1 − H0 > 0 with the paired CI excluding 0, ahead in all 3 seeds;
+    - Γ stays in use;
+    - the ground state is entangled.
+
+    Q is falsified if Γ collapses or an adequately powered test shows no gain.
+  - **I is supported** only if all of these hold:
+    - H2 > H1 (CI excluding 0, all seeds);
+    - H2 > H2s;
+    - the learned H2 really has sign structure: median negative-amplitude mass
+      ≥ 0.01 and sign-stripped readout distance ≥ 0.01.
+
+    **H2 ≈ H1 falsifies I.** So does unused sign structure, or H2 ≈ H2s.
+  - Expected [HYPOTHESIS]: H1 ≥ H0 by < 2 points; H2 ≈ H1.
+  - Positive results show that a transverse-field relaxation, or sign structure
+    in the world basis, helps. They are not quantum advantage.
+  - Stoquastic is not the same as efficiently simulable in general (Bravyi 2015;
+    Hastings 2013). At K ≤ 10 everything is computed exactly anyway.
+- **Single-variable comparisons.**
+  - Primary: H1 vs H0 (Γ) and H2 vs H1 (the K term), each at α = 0.05.
+  - Required attribution: H2 vs H2s.
+  - Holm family: H1 vs H1-sym; arms vs Tier 0′ A3, LLM cloze and letter pick;
+    H1-GS vs H1.
+  - All use 3 seeds, full ARC-Easy, and test once.
+- **Prerequisites.** Tier 0, and a Tier 1 cache that passes the gate. Every
+  energy term is a function of the path embeddings, so with no hypothesis
+  signal (D1) all arms tie for reasons unrelated to Q or I. Recommended first:
+  T2a and T2c.
+- **T4 cost [ASSUMPTION].** CPU (Apple M4, numpy) eigh forward: 47 ms per batch
+  of 16 at K = 8 and 1.15 s at K = 10 [VERIFIED: `--bench`]. On a T4, K = 8 adds
+  little to 1–3 s/step; K = 10 batches may double. Primary arms H0, H1, H2 × 3
+  seeds × 8 epochs ≈ 3–10 h; H2s, H1-sym and H1-GS add ≈ 3–10 h. A CPU torch
+  micro-benchmark comes first (design §8).
+- **Risks.**
+  - near-degenerate ground states (H1-GS);
+  - pair terms not learning without signal;
+  - Γ collapsing or H2 learning K ≤ 0 (pre-registered outcomes, not
+    prevented);
+  - H2 gains from capacity (the H2s control);
+  - basis-dependence of stoquasticity (Marvian et al. 2019);
+  - overfitting the ~33.5 k-parameter heads;
+  - over-claiming.
 - **Integration.** New `models/path_hamiltonian.py`; a default-off
   `readout="path"` flag in `models/full_model.py`; arms in
   `training/ablations.py`; logging in `training/evaluate.py`. The v46 path is
   unchanged. That is 4 files, over the 3-file threshold.
-- **Supervisor approval:** **Yes** (new readout; 4 files). *Decision D-12.*
+- **Supervisor approval:** **Yes.**
+  - Decisions: D-12 (H0/H1), D-13 (H2 + H2s), D-14 (directed head +
+    H1-sym), D-15 (4-file integration).
+  - P-2 (thermal readout) is already accepted.
 
 ---
 
@@ -680,7 +700,7 @@ Tier 2: T2a (A7) → T2b (budget) → T2c (scalar LR) → T2d (re-measure C6/C7)
           │
 Tier 3: T3a (signed readout) ∥ T3b (π/2 vs π, pre-registered) ∥ T3c (risk–coverage)
           │
-Tier 3b: path Hamiltonian H0 vs H1 (+ H1-GS), pre-registered; needs a gate-passing cache
+Tier 3b: path Hamiltonian H0 → H1 → H2 (+ H2s, H1-sym, H1-GS), pre-registered; gate-passing cache only
           │
 Tier 4: T4a probes → T4a training for options that pass ∥ T4b
 ```
@@ -691,7 +711,7 @@ reported, never used to adopt.
 
 **Rough total [ASSUMPTION; replaced by E8 measurements].** Tier 0 ≈ 7–17 h;
 Tier 1 ≈ 6–30 h (dominated by the generator choice); Tier 2 ≈ 10–30 h (30-epoch
-runs dominate); Tier 3 ≈ 3–10 h; Tier 3b ≈ 3–10 h; Tier 4 ≈ 3–15 h. These are T4 hours over many
+runs dominate); Tier 3 ≈ 3–10 h; Tier 3b ≈ 6–20 h; Tier 4 ≈ 3–15 h. These are T4 hours over many
 Colab sessions; every run over 1 h needs the go-ahead.
 
 ---
@@ -741,8 +761,10 @@ reported as accuracy against coverage.
 **Tier 3b: build the idea qAIR was named for.** The capstone circuit looked at
 each argument on its own. This design gives every argument a qubit, so the
 quantum state covers every combination of arguments being true or false, and
-pairs of arguments can exclude or support each other. We compare it with an
-otherwise identical classical version over the same combinations. What counts
+pairs of arguments can exclude, require or support each other. Three
+versions differ in one switch at a time: classical; quantum superposition
+without cancellation; and quantum with signed amplitudes that let arguments
+cancel. A control rules out "it only helped because it had more parameters". What counts
 as success and as failure is fixed in advance (see
 `path_hamiltonian_design.md`).
 
@@ -777,7 +799,10 @@ scoring, we call it additive scoring. Test data is never used to make choices.
 | D-9 | C3/C4/C5: risk–coverage reporting (no approval needed) now; pruning deferred; which encoder options to probe; C5 cleanup | Probe all three C4 options cheaply; train only those that pass; defer pruning |
 | D-10 | Stopping rule: if no Tier 1 cache passes the gate, report D1 as the result instead of continuing architecture work | Agree |
 | D-11 | Confirm the primary success criterion in §3 (arms, test, α, Holm over 2 contrasts) | Confirm before any test-set evaluation |
-| D-12 | **Approve the path Hamiltonian arms (H0/H1)**, plus the secondary H1-GS arm and the 4-file integration (Tier 3b; `path_hamiltonian_design.md` Appendix B) | Approve, to run only after a Tier 1 cache passes the gate |
+| D-12 | **Approve the path Hamiltonian arms (H0/H1)**, with H1-GS as secondary (Tier 3b; thermal readout P-2 already accepted) | Approve, to run only after a Tier 1 cache passes the gate |
+| D-13 | Approve arm **H2** (non-stoquastic X_iX_j couplings, sign unconstrained) with the **H2s** capacity control; XX only or XX + YY | Approve, XX only; H2s required for any interference claim |
+| D-14 | Directed (a, b, r) pair head as the default, with the symmetric-only **H1-sym** ablation | Approve |
+| D-15 | The 4-file integration for Tier 3b (`path_hamiltonian_design.md` §9) | Approve, behind a default-off flag |
 
 ---
 

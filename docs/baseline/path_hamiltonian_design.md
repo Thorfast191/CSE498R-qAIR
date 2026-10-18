@@ -1,21 +1,27 @@
 # Path Hamiltonian — a joint quantum state over all reasoning paths (DESIGN, for supervisor review)
 
-Branch `baseline` (code byte-identical to v46 `9552498`). Written 2026-10-18.
-**Design document only. No model code is changed.** The only new file besides
-this one is `scripts/verify_path_hamiltonian.py`, a numpy check of the
-mathematics below. Its output is in Appendix A.
+Branch `baseline` (code byte-identical to v46 `9552498`). Written 2026-10-18;
+revised 2026-10-18 (thermal readout accepted; H2 non-stoquastic arm; directed
+pair terms; verified references).
+**Design document only. No model code is changed.** The only other file is
+`scripts/verify_path_hamiltonian.py`, a numpy check of the mathematics. Its
+output is in Appendix A.
 
-Labels as in `docs/baseline/issue_dossier.md`: [VERIFIED: …] = file:line or a
-command run this session; [DERIVED] = mathematics shown here and checked by the
-script (check numbers refer to Appendix A); [HYPOTHESIS]; [ASSUMPTION]. All
-T4 costs are [ASSUMPTION] until measured.
+**Labels** (as in `docs/baseline/issue_dossier.md`):
+- [VERIFIED: …] = file:line, a command run this session, or a reference checked
+  against its arXiv or publisher page this session (§13);
+- [DERIVED] = mathematics shown here and checked by the script ("check n" refers
+  to Appendix A);
+- [HYPOTHESIS]; [ASSUMPTION].
+
+All T4 costs are [ASSUMPTION] until measured.
 
 ---
 
 ## 0. Why this, and what changes relative to v46
 
 **The idea.** qAIR's core claim is that reasoning paths interact: one path can
-cancel another, or depend on another, and the answer comes out of a collapse
+rule another out, or depend on another, and the answer comes out of a collapse
 over *joint* configurations of paths. **v46 never implemented this.** Its
 circuit processes each hypothesis separately. `models/quantum_layer.py:250-254`
 reshapes the hypotheses to `(B·K, D)`, compresses each to 6 angles and runs the
@@ -26,67 +32,114 @@ dossier.
 
 **The proposal.** One qubit per path. The state lives in the 2^K-dimensional
 space of *worlds*: which paths hold and which do not. A data-dependent
-Hamiltonian couples paths pairwise, so paths can exclude or require each
-other. The collapse picks low-energy worlds, and the answer is read off the
-resulting distribution over worlds.
+Hamiltonian couples paths pairwise, so paths can exclude, require or agree
+with each other. The collapse concentrates on low-energy worlds, and the
+answer is read from the resulting distribution over worlds.
+
+**Three arms isolate three claims:**
+- **H0** (classical: no superposition);
+- **H1** (superposition, but provably no interference between paths);
+- **H2** (superposition with sign structure, so paths can interfere
+  destructively).
 
 **What stays and what is replaced** (CLAUDE.md rules 6 and "ask before"):
 - The pipeline order is unchanged: Generator → Encoder → Quantum layer →
   Persistent Reasoner → Validator → **Energy Scoring → Collapse** → Prediction.
   The path Hamiltonian is a new *implementation* of the Energy Scoring and
-  Collapse stages: the heads produce h and J (energy), and the ground or thermal
-  state is the collapse. No stage is added or removed.
-- **The per-hypothesis 6-qubit circuit stays** (rule 6: do not remove the
-  quantum layer). It still enriches each path embedding upstream
-  (`models/full_model.py:315-319`, `H = H + q_state`). Removing it would be a
-  separate, later single-variable arm, and only with supervisor approval.
-- The v46 path (coherent interference readout) is untouched. The new readout
-  is selected by a flag, and only in the new arms.
-- Honesty, stated up front: K = 8 qubits is simulated **exactly** as a 256 × 256
-  matrix on a classical GPU. Nothing here is quantum hardware, and nothing here
-  supports a claim of quantum advantage (CLAUDE.md).
+  Collapse stages: the heads produce the energy terms, and the thermal state is
+  the collapse. No stage is added or removed.
+- **The per-hypothesis 6-qubit circuit stays** (rule 6). It still enriches each
+  path embedding upstream (`models/full_model.py:315-319`, `H = H + q_state`).
+  Removing it would be a separate, later arm, and only with approval.
+- The v46 readout (coherent interference) is untouched. The new readout is
+  selected by a flag, in the new arms only.
+- Honesty: K = 8 qubits are simulated **exactly** as 256 × 256 matrices on a
+  classical GPU. Nothing here is quantum hardware or evidence of quantum
+  advantage (CLAUDE.md).
 
 ---
 
 ## 1. Variables
 
-- **Paths.** K = 2N hypotheses per question (`config.py:170` `GEN_MODES =
-  ("support", "attack")`, K = len(GEN_MODES)·N [VERIFIED]). For a 4-option ARC
-  question K = 8; 3-option questions give K = 6, and 5-option questions K = 10.
-- **One qubit per path**, i = 0…K−1. Ordering used here and in the script:
-  (support₀, attack₀, support₁, attack₁, …). In the model, the ordering is
-  whatever the cache gives; membership comes from `polarity` (B, K) and
-  `align` (B, K, N), so the ordering never matters.
+- **Paths.** K = 2N hypotheses per question (`config.py:170`
+  `GEN_MODES = ("support", "attack")` [VERIFIED]). K = 8 for 4 options, K = 6 for
+  3, and K = 10 for 5.
+- **One qubit per path**, i = 0…K−1. Ordering in this document and the script:
+  (support₀, attack₀, support₁, attack₁, …). In the model, membership comes
+  from `polarity` (B, K) and `align` (B, K, N), so the cache's ordering never
+  matters.
 - **Basis state** x ∈ {0,1}^K is one **world**. x_i = 1 means "path i holds",
-  x_i = 0 means "path i fails". Integer index Σᵢ xᵢ 2^i. Pauli-Z convention:
-  Z_i|x⟩ = z_i|x⟩ with z_i = 1 − 2x_i, so z_i = −1 when the path holds.
-- **State space:** ℂ^(2^K). Every amplitude here is real, because H is real
-  symmetric (§2).
+  x_i = 0 means "path i fails". Integer index Σᵢ xᵢ 2^i.
+- **Pauli convention.** Z_i|x⟩ = z_i|x⟩ with z_i = 1 − 2x_i. X_i flips bit i.
+  Y_i|b⟩ = i(−1)^b|1−b⟩.
+- **State space:** ℂ^(2^K). Every Hamiltonian here is real symmetric (checks 1,
+  11), so all amplitudes and density-matrix entries are real.
 
 ---
 
-## 2. Hamiltonian
+## 2. Hamiltonians
 
-$$H \;=\; \sum_{i} h_i Z_i \;+\; \sum_{i<j} J_{ij} Z_i Z_j \;-\; \Gamma \sum_i X_i
-\qquad (2^K \times 2^K,\ \text{real symmetric})$$
+$$H_1 = \sum_i h_i Z_i + \sum_{i<j} J_{ij} Z_i Z_j - \Gamma\sum_i X_i,
+\qquad
+H_2 = H_1 + \sum_{i<j} K_{ij} X_i X_j\ \ \big(+ \sum_{i<j} L_{ij} Y_i Y_j\big)$$
 
-- **Diagonal (classical Ising) part.** ⟨x|H|x⟩ = E(x) = Σᵢ hᵢzᵢ + Σ_{i<j} J_ij zᵢzⱼ.
-- **Off-diagonal (transverse field).** ⟨x|H|x′⟩ = −Γ exactly when x and x′
-  differ in one bit, and 0 otherwise. Hermiticity and both entry rules are
-  verified in check 1.
-- **Signs, verified in check 2:**
-  - h_i > 0 favours x_i = 1 (path holds).
-  - J_ij > 0 favours *exactly one* of i, j holding: **paths cancel**, i.e.
-    exclude each other.
-  - J_ij < 0 favours i and j *agreeing*: **paths need each other**. Note
-    that "agreeing" includes "both fail". A Z_iZ_j coupling cannot express
-    "i requires j" one-directionally; that would need a different operator
-    (e.g. x_i(1−x_j)) and is out of scope.
-- **Γ ≥ 0**, learned: Γ = softplus(γ), γ a scalar.
+All are 2^K × 2^K real symmetric matrices.
 
-### 2.1 Heads and shapes (B = 16, d = MODEL_DIM = 128 [VERIFIED: `config.py:114`])
+| Term | Matrix entries [DERIVED; checks 1, 11] | Meaning |
+|---|---|---|
+| h_i Z_i, J_ij Z_iZ_j | diagonal: E(x) = Σ hᵢzᵢ + Σ J_ij zᵢzⱼ | the classical energy of world x (§2.1) |
+| −Γ X_i | −Γ between worlds differing in bit i | lets each path be in superposition of holding and failing; Γ = softplus(γ) ≥ 0 |
+| K_ij X_iX_j | +K_ij between worlds differing in **both** bits i and j | couples worlds in which two paths flip together; sign unconstrained |
+| L_ij Y_iY_j (optional) | −L_ij z_i z_j between the same worlds: −L_ij if x_i = x_j, +L_ij if they differ | the same flip, with a sign that depends on the world; any L_ij ≠ 0 produces both signs |
 
-Inputs, all already computed in v46 forward
+**Sign conventions at Γ = 0** [DERIVED; check 2]:
+- h_i > 0 favours x_i = 1.
+- J_ij > 0 favours exactly one of i, j holding (exclusion).
+- J_ij < 0 favours agreement: both hold *or* both fail.
+
+### 2.1 Directed pair terms in the 0/1 basis (replaces the symmetric Z_iZ_j head)
+
+A symmetric Z_iZ_j coupling *alone* cannot say "i requires j" in one
+direction. The previous version of this document stated that such a term
+was out of scope. That was too strong: a directed penalty is a quadratic
+function of the bits, so it maps **exactly** onto fields plus couplings. The
+head now produces terms in the 0/1 basis:
+
+$$E_{01}(x) = \sum_i a_i x_i + \sum_{i<j} b_{ij}\, x_i x_j + \sum_{i\neq j} r_{ij}\, x_i(1-x_j),\qquad r_{ij}\ge 0$$
+
+- a_i: unary cost of path i holding (a_i < 0 means plausible);
+- b_ij: symmetric co-occurrence term (b > 0: exclusion; b < 0: agreement);
+- **r_ij: "i requires j"**, a penalty when i holds and j fails; r_ij ≠ r_ji in
+  general.
+
+**Mapping to Ising form** [DERIVED; check 13]. Expand
+x_i(1 − x_j) = x_i − x_i x_j, collect
+
+$$c_i = a_i + \sum_{j\ne i} r_{ij},\qquad q_{ij} = b_{ij} - r_{ij} - r_{ji}\quad(i<j,\ q \text{ symmetric}),$$
+
+and substitute x_i = (1 − z_i)/2:
+
+$$h_i = -\tfrac12 c_i - \tfrac14\sum_{j\ne i} q_{ij},\qquad J_{ij} = \tfrac14 q_{ij},\qquad \text{const} = \tfrac12\sum_i c_i + \tfrac14\sum_{i<j} q_{ij}.$$
+
+- The constant shifts H by a multiple of the identity and leaves every state
+  unchanged.
+- Check 13 reproduces E₀₁ for all 256 worlds to 1.1e-14 on 50 random draws.
+- It keeps the direction: with only r₀₁ = 1, the world (x₀ = 1, x₁ = 0) costs
+  1.00; with only r₁₀ = 1 it costs 0.00.
+
+**What this does and does not add.** Every quadratic function of K bits is
+an Ising energy and vice versa, so the directed head does **not** enlarge the
+set of representable energies. It changes the *parametrization*: "i requires j"
+becomes one non-negative number predicted from ordered features. With a
+symmetric head, the same constraint needs a coordinated pair of h_i, h_j and
+J_ij values. This is an inductive-bias claim, and the ablation tests it.
+
+**Symmetric-only ablation:** the same head with r ≡ 0 (output removed), one
+variable.
+
+### 2.2 Heads and shapes (B = 16, d = MODEL_DIM = 128 [VERIFIED: `config.py:114`])
+
+Inputs, all already computed in the v46 forward pass
 (`models/full_model.py:257-408` [VERIFIED]):
 
 | Tensor | Shape | Source |
@@ -98,334 +151,397 @@ Inputs, all already computed in v46 forward
 | align | (B, K, N), one-hot over options | input |
 | H_mask, O_mask | (B, K), (B, N) | input |
 
-**Unary head → h.**
-- Own-option energy a_i = Σₙ align_in · energy_in: (B, K, N) → (B, K).
-- Features u_i = [e_i, validator_energy_i, a_i, polarity_i]: (B, K, d+3) = (B, K, 131).
-- MLP 131 → 64 → 1 (GELU), then h = c·tanh(·): (B, K, 131) → (B, K, 1) → (B, K).
-- The LLM prior is **not** a unary feature. It stays where v46 adds it, at the
-  output, and only in prior-on variants (§6), so prior-off arms remain
-  comparable with A3.
+**Unary head → a.**
+- Own-option energy α_i = Σₙ align_in · energy_in: (B, K, N) → (B, K).
+- Features [e_i, validator_energy_i, α_i, polarity_i]: (B, K, 131).
+- MLP 131 → 64 → 1 (GELU); a = −c_a·tanh(·): (B, K).
+- The LLM prior is not a unary feature. It stays at the output, as in v46, and
+  only in prior-on variants (§6).
 
-**Pairwise head → J.**
-- Features f_ij = [e_i + e_j, e_i ⊙ e_j, polarity_i, polarity_j,
-  same_option_ij], with same_option_ij = Σₙ align_in·align_jn ∈ {0, 1}:
-  (B, K, K, 2d+3) = (B, K, K, 259).
-- MLP 259 → 64 → 1 (GELU), giving g: (B, K, K).
-- **Symmetrize**: the [polarity_i, polarity_j] slot is ordered, so g is not
-  symmetric by itself. J = c·tanh(½(g + gᵀ)): (B, K, K). Then zero the
-  diagonal and set J_ij = 0 wherever either path is masked.
+**Directed pair head → r, b (and k for H2).**
+- Ordered features f_ij = [e_i, e_j, e_i ⊙ e_j, pol_i, pol_j, same_option_ij],
+  with same_option_ij = Σₙ align_in·align_jn: (B, K, K, 3d+3) = (B, K, K, 387).
+  The order of e_i, e_j makes f_ij ≠ f_ji.
+- MLP 387 → 64 → n_out (GELU), with n_out = 2 (H0/H1) or 3 (H2):
+  (B, K, K, 387) → (B, K, K, n_out).
+- **r_ij** = c_r·sigmoid(·) ≥ 0: (B, K, K), not symmetrized.
+- **b_ij** = c_b·tanh(½(s_ij + s_ji)): symmetrized.
+- **H2 only: K_ij** = c_K·tanh(½(t_ij + t_ji)), symmetrized, sign
+  unconstrained. **H2s** (stoquastic capacity control):
+  K_ij = −c_K·sigmoid(½(t_ij + t_ji)) ≤ 0.
+- Zero the diagonals; zero every term that touches a masked path.
+- **Map to Ising** with the formulas of §2.1: (a, b, r) → h (B, K),
+  J (B, K, K).
 
-**Parameters** [DERIVED]: unary 131·64 + 64 + 64 + 1 = 8,513; pairwise
-259·64 + 64 + 64 + 1 = 16,705; plus γ, and τ for the temperature (§4) =
-**25,220**, i.e. +2.4% on v46's 1,056,382 [OBSERVED cell 22].
+**Scale.** c_a = c_b = c_r = c_K = 2 [ASSUMPTION; set on validation during
+the CPU smoke test, never on test]. Bounded heads fix the overall energy
+scale, which T would otherwise trade off against.
 
-**Scale.** The ground state is invariant to multiplying (h, J, Γ) by any
-c > 0 (the eigenvectors of cH equal those of H), so the overall scale is not
-identified. Bounding h and J with c·tanh fixes it. c = 2 [ASSUMPTION; to be
-set on validation in the CPU smoke test, not tuned on test].
+**Parameters** [DERIVED]:
 
-### 2.2 Building H (shapes)
+| Variant | Count | vs v46's 1,056,382 [OBSERVED cell 22] |
+|---|---|---|
+| Unary head (all variants) | 131·64 + 64 + 64 + 1 = 8,513 | |
+| Pair trunk (all variants) | 387·64 + 64 = 24,832 | |
+| Symmetric-only (n_out = 1) | 33,410 + scalars | |
+| H0/H1 directed (n_out = 2) | 33,475 + scalars | **+3.2%** |
+| H2 directed (n_out = 3) | 33,540 + scalars | **+3.2%** |
+
+Scalars: τ (all), plus γ (H1, H2). The H2 output layer adds 65 parameters
+over H1.
+
+### 2.3 Building H (shapes)
 
 Constant buffers per K, built once:
 - Z table: z (2^K, K)
 - pair table: zz (K(K−1)/2, 2^K)
-- transverse matrix: X_sum (2^K, 2^K), with K·2^K non-zeros
+- transverse matrix: X_sum (2^K, 2^K)
+- H2 only: the pair-flip index table, K(K−1)/2 index maps of length 2^K
 
 Per batch:
-1. E = h @ zᵀ + J_pairs @ zz: (B, K) and (B, K(K−1)/2) → **(B, 2^K)**
-2. H = diag_embed(E) − Γ·X_sum: **(B, 2^K, 2^K)** = (16, 256, 256) for K = 8
+1. E = h @ zᵀ + J_pairs @ zz: **(B, 2^K)**
+2. H₁ = diag_embed(E) − Γ·X_sum: **(B, 2^K, 2^K)**
+3. H₂ = H₁ + Σ_{i<j} K_ij·XX_ij, as a scatter-add of K_ij into the pair-flip
+   entries: **(B, 2^K, 2^K)**
 
-**Mixed option counts.** A batch may mix K = 6, 8 and 10. Group the items by K
-and build one H per group: (B_K, 2^K, 2^K). Padding K = 6 items to 8 qubits
-would quadruple the matrix and needs "frozen" qubits, which a Γ > 0 term would
-still leak amplitude into. Grouping avoids both.
+**Mixed option counts:** group items by K (6, 8, 10) and build one H per group,
+instead of padding with frozen qubits.
 
 ---
 
 ## 3. Where the classical data enters the quantum state
 
-**Explicitly: the per-question classical data enters the quantum state here,
-and only here.** It enters through three things:
-1. **h**, the unary energies (from that question's path embeddings, validator
-   energies and path–option energies);
-2. **J**, the pairwise couplings (from pairs of that question's path
-   embeddings, their polarities and whether they argue about the same option);
-3. **the basis encoding of paths**: qubit i *is* path i of this question, and
-   basis state x *is* a world over this question's paths.
+**Explicitly: per-question classical data enters the quantum state here and
+only here.** It enters through three things:
+1. the unary terms (a → h);
+2. the pair terms (b, r → J and h; K for H2), all computed from that
+   question's path embeddings, validator energies, path–option energies,
+   polarities and option alignment;
+3. the **basis encoding of paths**: qubit i *is* path i of this question, and
+   basis state x *is* a world over its paths.
 
-The state is then *defined* by the data, as the ground (or thermal) state of
-H(h, J, Γ). This is Hamiltonian encoding.
+The state is defined by the data, as the thermal state of H(data). This is
+Hamiltonian encoding.
 
-**Why no separate dataset-encoding stage** (no AngleEmbedding,
-amplitude encoding or feature map in front of it):
-- **There is no initial state to load data into.** The state is the lowest-energy
-  state of a data-dependent operator, not the output of a circuit applied to an
-  input state. A feature map would have nothing to act on.
-- **The register is the wrong shape for features.** 8 qubits hold one bit of
-  meaning per path (holds/fails). The 128-d path embeddings (1,024 numbers for
-  K = 8) do not fit into a 256-dimensional state in any interpretable way.
-  Encoding them would turn the "world" basis into an opaque feature space, and
-  the meaning of x would be lost.
-- **One channel, interpretable parameters.** With data entering only via h and
-  J, every number in H has a stated meaning (a path's standalone plausibility, a
-  pair's exclusion or dependence), and the diagnostics in §7 read them directly.
-  A second, unconstrained encoding channel would make "the paths cancelled each
-  other" untestable.
-- **The per-path quantum feature map already exists.** It is the v46 6-qubit
-  circuit upstream (§0), which stays. Adding another encoding stage would
-  duplicate it and add a pipeline stage (CLAUDE.md "ask before").
+**Why no separate dataset-encoding stage** (no AngleEmbedding, amplitude
+encoding or feature map in front of it):
+- **No initial state to load into.** The state is a function of a
+  data-dependent operator, not the output of a circuit applied to an input
+  state.
+- **The register is the wrong shape for features.** 8 qubits carry one bit of
+  meaning per path. The 1,024 numbers of 8 × 128-d embeddings have no
+  interpretable home in a 256-dimensional state, and encoding them would destroy
+  the "world" meaning of the basis.
+- **One channel, interpretable numbers.** Every term in H has a stated meaning
+  (plausibility, exclusion, requirement, interference coupling), and §7 reads
+  them directly. A second encoding channel would make "paths interfered"
+  untestable.
+- **The per-path quantum feature map already exists** upstream (the v46
+  circuit). Another one would duplicate it and add a pipeline stage (CLAUDE.md
+  "ask before").
 
 ---
 
-## 4. Collapse
+## 4. Collapse, stoquasticity and interference
 
-### 4.1 Ground state (as proposed)
+### 4.1 Thermal-state readout at learned T — **accepted (P-2, 2026-10-18)**
 
-- λ, V = `torch.linalg.eigh(H)`: (B, 2^K) and (B, 2^K, 2^K), ascending
-  eigenvalues.
-- ψ₀ = V[:, :, 0]: (B, 2^K); P(x) = |ψ₀(x)|²: (B, 2^K), with Σₓ P(x) = 1
-  (check 8).
-- At Γ = 0, ψ₀ is the one-hot minimum-energy world (check 3).
-- At Γ > 0, H is **stoquastic** (all off-diagonals ≤ 0), so by Perron–Frobenius
-  ψ₀ is unique and has single-signed amplitudes (check 4: 200/200 draws).
-  Two consequences:
-  - The ψ₀² readout is well defined, and the sign ambiguity of eigh's columns
-    is harmless.
-  - **There is no destructive interference of amplitudes inside ψ₀.** In this
-    design, "paths cancel" means *energetic* exclusion through J > 0. It does
-    not mean negative amplitudes, unlike v46's phase-π cancellation.
+$$P_T(x) = \frac{\langle x|e^{-H/T}|x\rangle}{\mathrm{Tr}\,e^{-H/T}},\qquad T = 0.05 + \mathrm{softplus}(\tau),\ T_0 = 1.0\ [\text{ASSUMPTION}]$$
 
-### 4.2 The problem with "H0 = Γ = 0, otherwise identical" under ground-state collapse
+This readout is used for **H0, H1, H2 and H2s**.
+- **H0 (Γ ≡ 0, K ≡ 0):** P_T = softmax(−E/T) exactly (check 7, max difference
+  0.0). The gradient is non-zero (check 6, 50/50). This is the classical Ising
+  model over worlds.
+- **As T → 0:** P_T → the ground-state readout ψ₀² (check 7: total-variation
+  distance 0.244 at T = 1, 2.7e-16 at T = 0.01).
+- **Why not a ground-state readout for the pair:** at Γ = 0 the ground state is
+  the one-hot argmin world, and the loss has zero gradient almost everywhere
+  (check 6, 50/50). A ground-state H0 cannot be trained, so H0/H1 would not be
+  "otherwise identical".
+- **Computation.** H0: softmax(−E/T), (B, 2^K). H1, H2:
+  `torch.linalg.matrix_exp(−(H − c·I)/T)` in float64, then the diagonal,
+  normalized.
+  - c is a detached ground energy from `torch.linalg.eigvalsh`. P is invariant
+    to c, so every exponent is ≤ 0 with maximum 0. The cheaper Gershgorin bound
+    c = minₓE(x) − KΓ (minus Σ|K_ij| for H2) can underflow at small T and is
+    only a fallback.
+  - The backward is the Fréchet derivative (Daleckii–Krein divided
+    differences). It is smooth even with degenerate excited states, and
+    matches finite differences to 1.8e-9 for H1 (check 7) and 3.6e-9 for H2
+    (check 14).
+- **H1-GS** (secondary): the ground-state readout ψ₀² with Γ > 0, as originally
+  proposed. Degeneracy handling is in §4.4.
 
-At Γ = 0, P is one-hot on the argmin world. A small change of h or J leaves
-the argmin unchanged almost everywhere, so **the loss has zero gradient
-almost everywhere and H0 cannot be trained**. Check 6 confirms this: the
-finite-difference gradient is exactly 0 in 50/50 random draws. A ground-state
-H0 is therefore not a usable control.
+### 4.2 Why H1 cannot interfere: stoquasticity and Perron–Frobenius
 
-### 4.3 Recommended collapse for the arm pair: thermal state at learned temperature
+**Definition** [VERIFIED: Bravyi, DiVincenzo, Oliveira, Terhal 2008, abstract].
+A Hamiltonian is *stoquastic* in a basis if all its off-diagonal matrix elements
+in that basis are real and non-positive. Equivalently, its Gibbs density matrix
+is entrywise non-negative at every temperature.
 
-$$P_T(x) = \frac{\langle x|e^{-H/T}|x\rangle}{\mathrm{Tr}\,e^{-H/T}},\qquad T = 0.05 + \mathrm{softplus}(\tau)$$
+**H1 is stoquastic in the world basis.** Its only off-diagonal entries are −Γ ≤ 0
+(check 1). Two consequences:
+1. **Thermal state.** With c ≥ maxₓ E(x), the matrix M = cI − H₁ is entrywise
+   non-negative, and
+   e^{−H₁/T} = e^{−c/T}·e^{M/T} = e^{−c/T} Σₙ (M/T)ⁿ/n!.
+   Every term is entrywise ≥ 0 [DERIVED; check 12: no negative entry in
+   200/200 draws].
+   - Read as a sum over *sequences of worlds* (each power of M steps from one
+     world to a neighbouring one), the diagonal P_T(x) adds up only
+     non-negative contributions.
+   - **No sequence can cancel another.** There is no destructive interference
+     between paths through world space.
+2. **Ground state** (Perron–Frobenius, a standard theorem for non-negative
+   irreducible matrices). M is non-negative and, for Γ > 0, irreducible: the
+   hypercube of single-bit flips is connected. So the top eigenvector of M,
+   which is the ground state of H₁, is unique and strictly positive (check 4:
+   200/200; check 12: H1 ground states with a negative amplitude 0/200).
 
-- At Γ = 0 this is **exactly** the classical Gibbs distribution
-  softmax(−E/T) (check 7, max difference 0.0). Its gradient is non-zero (check
-  6, 50/50). So H0 is "the classical Ising model over worlds".
-- At Γ > 0 it is the quantum thermal state. As T → 0 it **converges to the
-  ground-state collapse ψ₀²** (check 7: total-variation distance 0.244 at
-  T = 1, 2.7e-16 at T = 0.01). So §4.1 is its zero-temperature limit, and a
-  learned T can approach it.
-- **One variable.** H0 and H1 then differ only in Γ (Γ ≡ 0 vs learned), as the
-  arm specification requires.
-- **Computation.**
-  - H0: softmax(−E/T) directly, (B, 2^K). No matrix is needed.
-  - H1: `torch.linalg.matrix_exp(−(H − c·I)/T)` in float64, take the diagonal,
-    normalize. P is invariant to the shift c, so c can be a detached ground
-    energy from `torch.linalg.eigvalsh` (no gradient needed). Then every
-    exponent is ≤ 0 and the largest is exactly 0. A cheaper Gershgorin bound,
-    c = minₓE(x) − KΓ, leaves up to KΓ/T of slack, which can underflow at small
-    T [DERIVED from the Gershgorin disc radius KΓ], so it is only a fallback.
-    The backward is the Fréchet
-    derivative, equivalently the Daleckii–Krein divided-difference formula. It
-    is smooth even when **excited** states are degenerate, which an eigh-based
-    backward is not. Check 7 verifies this gradient against finite differences
-    (relative error 1.8e-9).
-- The ground-state collapse of §4.1 is kept as a **secondary arm, H1-GS**, so
-  the proposed formulation is also tested (§6).
+So **H1 adds superposition but no interference**: its readout equals that of
+its own sign-stripped version (check 12: total-variation distance 0.0 in every
+draw). Any H1-vs-H0 difference is a superposition (transverse-field) effect,
+not an interference effect.
 
-### 4.4 Near-degenerate ground states (H1-GS)
+### 4.3 Why H2 can interfere
 
-- **Γ > 0 guarantees a unique ground state** (check 4), but the gap can be tiny.
-  With a global flip symmetry (h = 0), the gap is 0 at Γ = 0, 7.9e-8 at
-  Γ = 0.01, 7.6e-4 at Γ = 0.1 and 1.04 at Γ = 1 (check 10). The eigenvector
-  derivative scales as 1/(λ₀ − λ₁), so gradients blow up near such points.
-- **At Γ = 0, eigh returns an arbitrary vector inside a degenerate subspace.**
-  P read from one column depends on that arbitrary choice (max difference
-  0.415 in check 10), while the projector average over the subspace does not.
-- **Handling**, in order:
-  1. Compute in float64.
-  2. Floor Γ in H1-GS: Γ = 0.05 + softplus(γ) [ASSUMPTION: floor value]. H1
-     (thermal) needs no floor.
-  3. Broadened backward: replace 1/(λ₀ − λ_k) by
-     (λ₀ − λ_k)/((λ₀ − λ_k)² + δ²) with δ = 1e-3 [ASSUMPTION]. This is a custom
-     autograd function, verified against finite differences away from
-     degeneracy.
-  4. If λ₁ − λ₀ < δ, read P from the projector onto all eigenvectors within δ
-     of λ₀, averaged: P(x) = Σ_{k: λ_k − λ₀ < δ} ψ_k(x)² / m. This is
-     basis-invariant (check 10).
-  5. Log the fraction of items that hit cases 3 or 4 (§7).
+- K_ij X_iX_j puts **+K_ij** on the entries joining worlds that differ in bits i
+  and j. With K_ij > 0 these entries are positive, so H₂ is **non-stoquastic in
+  the world basis**. The optional Y_iY_j term has entries of both signs for any
+  L_ij ≠ 0.
+- Then M = cI − H₂ has negative entries. Sequences of worlds through those
+  entries contribute **negative** terms to P_T(x), so contributions cancel:
+  destructive interference between paths.
+- Measured on random draws (K = 8, T = 0.5) [DERIVED; check 12]:
+
+  | | H1 | H2 (unconstrained K) | H2s (K ≤ 0) |
+  |---|---|---|---|
+  | ground state has negative amplitudes | 0/200 | **189/200** | 0/200 |
+  | negative entries in e^{−H/T} | 0/200 | **190/200** | 0/200 |
+
+  - H2's negative amplitude mass: median 0.128, max 0.499.
+  - H2's readout differs from its sign-stripped version by a median
+    total-variation distance of 0.519.
+  - These are **random**, untrained draws. They show what H2 *can* do, not
+    what training will choose.
+- **H2s is a capacity control.** It has the same head and the same XX terms,
+  with the sign constrained to K ≤ 0. That keeps it stoquastic: it has every
+  parameter H2 has, but cannot interfere. H2 vs H2s isolates the sign from the
+  extra couplings.
+
+**Basis caveat** [VERIFIED reference]. "Non-stoquastic" is a property of a
+basis. Some Hamiltonians that are non-stoquastic in one basis become
+stoquastic after a local change of basis, and finding such a "curing"
+transformation is NP-complete even when restricted to single-qubit Clifford or
+orthogonal transformations (Marvian, Lidar & Hen 2019).
+- Our claim is deliberately basis-specific. The answer is **read in the world
+  basis**, so the sign structure that matters for the readout is the one in
+  that basis. The §7 diagnostics measure exactly that.
+- We do not claim that a learned H2 is "intrinsically" non-stoquastic.
+
+### 4.4 Near-degenerate ground states (H1-GS only)
+
+- Γ > 0 makes the H1 ground state unique (check 4), but the gap can be tiny. In
+  a flip-symmetric case (h = 0) the gap is 0, 7.9e-8, 7.6e-4 and 1.04 at
+  Γ = 0, 0.01, 0.1 and 1 (check 10). Eigenvector gradients scale as 1/gap.
+- At Γ = 0, `eigh` returns an arbitrary vector inside a degenerate subspace.
+  Reading P from one column depends on that choice (max difference 0.415); the
+  projector average does not (check 10).
+- **Handling:**
+  1. compute in float64;
+  2. floor Γ at 0.05 [ASSUMPTION];
+  3. broadened backward: (λ₀ − λ_k)/((λ₀ − λ_k)² + δ²), δ = 1e-3 [ASSUMPTION];
+  4. if λ₁ − λ₀ < δ, use the projector average over eigenvectors within δ of
+     λ₀;
+  5. log how often 3 or 4 fires.
+- The thermal arms (H0, H1, H2, H2s) need none of this (§4.1).
 
 ---
 
 ## 5. Answer and loss
 
 - **Answer masks** (B, N, 2^K):
-  m_n(x) = Π_{k: align_kn = 1, pol_k = +1} x_k · Π_{k: align_kn = 1, pol_k = −1} (1 − x_k).
-  With one support and one attack per option this is
-  x_sup(n) · (1 − x_att(n)), as proposed. They are built per item from `align`
-  and `polarity`; masked paths and options are excluded.
-- **Score:** s_n = Σₓ P(x) m_n(x): (B, 2^K) × (B, N, 2^K) → (B, N). This is the
-  probability that option n's support holds and its attack fails. It lies in
-  [0, 1] (check 8).
-- **Normalize:** p_n = (s_n + ε)/Σ_m(s_m + ε), ε = 1e-6. The raw s_n do not sum
-  to 1: several options can be "on" in one world, or none (in check 8 they
-  summed to 1 in only 3 of 200 draws). After normalization Σp = 1 and every
-  p_n > 0 (check 8). ε prevents log 0 when every option scores 0. Padded options
-  are masked with the same −30 floor as v46 (`models/full_model.py:428-440`).
-- **Prior-on variants only:** add `softplus(llm_prior_weight) · z(llm_logprob)`
-  to log p and re-normalize, exactly as v46 does (`models/full_model.py:416-440`).
-- **Loss.** `scores = log p` goes into the existing `training/losses.py`
-  unchanged:
+  m_n(x) = Π_{k: align_kn = 1, pol_k = +1} x_k · Π_{k: align_kn = 1, pol_k = −1} (1 − x_k),
+  i.e. x_sup(n)(1 − x_att(n)) for one support and one attack per option.
+- **Score:** s_n = Σₓ P_T(x) m_n(x): (B, N), in [0, 1] (check 8). It is the
+  probability that option n's support holds and its attack fails.
+- **Normalize:** p_n = (s_n + ε)/Σ_m(s_m + ε), ε = 1e-6. The raw s_n summed to
+  1 in only 3 of 200 draws (check 8). Padded options use v46's −30 floor
+  (`models/full_model.py:428-440`).
+- **Prior-on variants only:** add softplus(llm_prior_weight)·z(llm_logprob) to
+  log p and re-normalize, as v46 does (`models/full_model.py:416-440`).
+- **Loss.** `scores = log p` goes into `training/losses.py` unchanged:
 
   smoothed cross-entropy + 0.4 · ranking + 0.1 · validator BCE.
 
-  The path arms return `diversity = None`, so the −0.02·tanh(diversity) term
-  is absent (`training/losses.py:139-145` skips it when None [VERIFIED]). It is
-  identical for H0 and H1.
+  The path arms return `diversity = None`, so the diversity reward is skipped
+  (`training/losses.py:139-145` [VERIFIED]). It is identical across H0, H1 and
+  H2.
 
 **Differentiable end to end.**
-- loss → log p → s → P: sums, products and a normalization; smooth for ε > 0.
-- P → H, thermal (H0, H1):
-  - H0: softmax of −E/T, smooth.
-  - H1: matrix_exp and trace, whose Fréchet derivative exists for every
-    symmetric H, degenerate or not (check 7, rel. error 1.8e-9).
-- P → H, ground state (H1-GS): ψ₀ by eigh. Its derivative
-  dψ₀ = Σ_{k>0} ψ_k ⟨ψ_k|dH|ψ₀⟩ / (λ₀ − λ_k) exists whenever the ground state is
-  non-degenerate, which Γ > 0 guarantees (check 4). It matches finite
-  differences to 1.1e-8 relative error on K = 4 for all 11 parameters
-  (4 h, 6 J, γ) (check 5). torch's eigh backward implements this formula
-  [ASSUMPTION: from the PyTorch documentation, which also warns that it is
-  unstable for close eigenvalues; hence §4.4].
-- H → (h, J, Γ): linear in h and J, and in Γ through softplus.
-- (h, J) → heads → e, validator energy, path–option energy → reasoner, circuit,
-  encoder projection: the existing v46 graph, already differentiable.
+- loss → p → s → P_T: smooth for ε > 0.
+- P_T → H:
+  - H0: softmax, smooth.
+  - H1, H2: matrix_exp and trace, Fréchet-differentiable for every symmetric H
+    (checks 7, 14).
+  - H1-GS: eigh, differentiable for a non-degenerate ground state (check 5:
+    1.1e-8 vs finite differences).
+- H → (h, J, Γ, K): linear in h, J and K; softplus in Γ.
+- (h, J) → (a, b, r): linear (§2.1).
+- Heads → e, validator energy, path–option energy → reasoner, circuit,
+  encoder projection: the existing v46 graph.
 
-So every parameter of the path arms receives gradient. The Tier 0
-gradient-coverage test (DoD §2.2) must pass for H0, H1 and H1-GS.
+The Tier 0 gradient-coverage test (DoD §2.2) must pass for every path arm.
 
 ---
 
 ## 6. Arms and pre-registration
 
-| Arm | Collapse | Γ | Everything else |
-|---|---|---|---|
-| **H0** | thermal, P_T = softmax(−E/T) | ≡ 0 (classical Ising, Gibbs) | A3 config + path readout |
-| **H1** | thermal, diag e^{−H/T}/Tr | learned, softplus(γ) | identical to H0 |
-| H1-GS (secondary) | ground state ψ₀², §4.4 handling | learned, floored at 0.05 | identical to H1 |
+| Arm | Γ | K (XX) | Pair head | Role |
+|---|---|---|---|---|
+| **H0** | ≡ 0 | ≡ 0 | directed (r, b) | classical Ising over worlds (Gibbs) |
+| **H1** | learned | ≡ 0 | directed | superposition, stoquastic: **no interference** |
+| **H2** | learned | learned, sign unconstrained | directed + k | superposition **with** sign structure |
+| H2s | learned | learned, K ≤ 0 | directed + k | capacity control for H2 (stoquastic) |
+| H1-sym | learned | ≡ 0 | r ≡ 0 (symmetric only) | ablation of the directed terms |
+| H1-GS | learned, ≥ 0.05 | ≡ 0 | directed | ground-state readout (secondary) |
 
-- **Base config: A3** (quantum + validator, LLM prior off;
-  `training/ablations.py:109` [VERIFIED]). With the prior off, the paths, not
-  the prior, have to carry the answer.
-- **Prior-on variants** (H0-F, H1-F) are run only if the supervisor wants a
-  deployed-system comparison (decision P-3).
-- **Comparisons**, all on full ARC-Easy, seeds 42/43/44, checkpoint selected on
-  validation, test evaluated once, per-seed exact McNemar plus an item-level
-  paired bootstrap of the seed-averaged difference (improvement_plan.md §0):
-  - **Primary contrast: H1 vs H0** (the single variable Γ). Tested alone at
-    α = 0.05.
-  - **Secondary family** (Holm): H1 vs v46 A3 (reference run, Tier 0′); H0 vs
-    v46 A3; H1 vs LLM cloze; H1 vs LLM letter pick; H1-GS vs H1.
-- Initial values: γ such that Γ₀ = 0.5, τ such that T₀ = 1.0 [ASSUMPTION]. Γ,
-  T and γ belong to the scalar LR group of improvement_plan.md T2c.
+- All arms use the thermal readout at learned T (except H1-GS) and the A3 base
+  config (LLM prior off; `training/ablations.py:109` [VERIFIED]).
+- Prior-on variants only if a primary contrast is positive (decision P-3).
+- **Protocol for every comparison:** full ARC-Easy; seeds 42/43/44; checkpoint
+  selected on validation; test evaluated once; per-seed exact McNemar plus an
+  item-level paired bootstrap of the seed-averaged difference
+  (improvement_plan.md §0).
+- Initial values: Γ₀ = 0.5, T₀ = 1.0, K = 0 at init (zero-initialized last
+  layer of the k output) [ASSUMPTION]. γ and τ are in the T2c scalar LR group.
+
+**Contrasts:**
+
+| Contrast | Single variable | Status |
+|---|---|---|
+| **H1 vs H0** | Γ | primary, claim Q (α = 0.05) |
+| **H2 vs H1** | K term | primary, claim I (α = 0.05) |
+| H2 vs H2s | sign of K | attribution for claim I (required, see below) |
+| H1 vs H1-sym | directed terms r | ablation (Holm family) |
+| H0, H1, H2 vs v46 A3 (Tier 0′); vs LLM cloze; vs LLM letter pick | — | secondary (Holm family) |
+| H1-GS vs H1 | readout | secondary |
 
 ### Pre-registration (fixed now, before any run)
 
-**Hypothesis Q ("quantum superposition between paths helps").** Holding the
-energy model fixed, letting worlds superpose (Γ > 0) gives better answers than
-the classical distribution over the same worlds (Γ = 0).
+*Thresholds marked † are choices fixed here [ASSUMPTION], not derived.*
 
-**Q is supported only if all of these hold:**
-1. H1 − H0 test accuracy > 0, with the paired-bootstrap 95% CI excluding 0,
-   and H1 ahead of H0 in all 3 seeds.
-2. The learned Γ stays in use. Γ/(‖J‖_F/K) ≥ 0.05 at the selected checkpoint
-   in all 3 seeds [ASSUMPTION: the 0.05 floor is a choice, fixed here]. If the
-   transverse field shrinks to irrelevance, the model has chosen to be classical.
-3. On validation, the median entanglement entropy of the state across the
-   supports | attacks bipartition is > 0.01 nats. For thermal H1 this is
-   computed on the ground state of the learned H.
+**Claim Q — "superposition between paths helps."** Supported only if **all**
+of these hold:
+1. H1 − H0 > 0 on test, with the paired 95% CI excluding 0, and H1 ahead in
+   all 3 seeds.
+2. Γ stays in use: Γ/(‖J‖_F/K) ≥ 0.05† at the selected checkpoint in all
+   seeds.
+3. The ground state of the learned H is entangled across supports | attacks:
+   median > 0.01† nats on validation.
 
-**Q is falsified (on ARC-Easy, at this cache) if:**
-- Γ collapses: Γ/(‖J‖_F/K) < 0.05 in ≥ 2 of 3 seeds. The data preferred the
-  classical model. Or:
-- H1 − H0 ≤ 0, or its CI includes 0 while the minimum detectable difference for
-  the observed discordance is ≤ 3 points. The test had the power to see a
-  3-point effect and saw none. Or:
-- H1 > H0 significantly but condition 2 fails. The gain is then not
-  attributable to superposition (an optimization or initialization difference),
-  and Q is **not** supported.
+Falsified if Γ collapses (condition 2 fails in ≥ 2 seeds), or if H1 − H0 ≤ 0 or
+its CI includes 0 while the minimum detectable difference for the observed
+discordance is ≤ 3 points. Inconclusive if the CI includes 0 and the test is
+under-powered. Prediction [HYPOTHESIS]: on a gate-passing cache, H1 ≥ H0 by
+< 2 points.
 
-**Inconclusive:** H1 − H0's CI includes 0 and the minimum detectable
-difference exceeds 3 points (an under-powered test).
+**Claim I — "interference between paths helps"** (the H2 question).
+- **Supported** only if **all** of these hold:
+  1. **H2 > H1**: H2 − H1 > 0 on test, paired 95% CI excluding 0, H2 ahead in
+     all 3 seeds.
+  2. **Attribution to sign:** H2 − H2s > 0 with a paired 95% CI excluding 0.
+     Otherwise any gain comes from the extra couplings, not from interference.
+  3. **Sign structure is in use** on validation at the selected checkpoint, in
+     all seeds:
+     - median negative-amplitude mass of the learned H's ground state ≥ 0.01†;
+     - median total-variation distance between P_T and the sign-stripped
+       readout ≥ 0.01†.
+- **Falsified (H2 ≈ H1):**
+  - H2 − H1 ≤ 0, or its CI includes 0 with a minimum detectable difference
+    ≤ 3 points; **or**
+  - sign structure unused (condition 3 fails in ≥ 2 seeds; training chose a
+    stoquastic-looking H2); **or**
+  - H2 > H1 but H2 ≈ H2s: the gain is capacity, not interference.
+- **Inconclusive:** the CI includes 0 and the test is under-powered.
+- **Prediction** [HYPOTHESIS]: on a gate-passing cache, H2 ≈ H1 (|Δ| < 2
+  points). With one support and one attack per option, the useful pairwise
+  logic is mostly exclusion and requirement, which the diagonal (h, J, r)
+  already expresses.
 
-**Prediction** [HYPOTHESIS, stated so that it can fail]: if the Tier 1 cache
-passes the gate, H1 ≥ H0 by less than 2 points, and Γ stays in use. If the
-cache fails the gate, H1 ≈ H0 ≈ chance-level reasoning, and the result says
-nothing about Q (§10).
+**Directed terms (ablation, no claim attached).** H1 − H1-sym is reported with
+its CI; no direction is predicted.
 
-**What a positive result would and would not mean.** H is stoquastic (§4.1).
-Ground and thermal states of stoquastic Hamiltonians are, in general,
-classically samplable by path-integral Monte Carlo, which maps a
-transverse-field Ising model onto a classical Ising model with one extra
-"imaginary-time" dimension [ASSUMPTION: a standard result, quoted from memory;
-cite a source before using it in the thesis]. So even a clear H1 > H0 shows
-that *this transverse-field relaxation of the classical collapse* helps. It
-does **not** show a quantum advantage, and it must not be described as one.
+**What a positive result would and would not mean.**
+- For H1 [VERIFIED references, §13]: H1 is a transverse-field Ising model, and
+  for such models Suzuki (1976) maps the quantum system onto a classical Ising
+  model with one extra dimension. Stoquastic Hamiltonians have no sign problem
+  for such Monte Carlo methods, but that does **not** make them efficiently
+  simulable in general:
+  - estimating stoquastic ground-state energies is MA-complete under a guiding
+    promise, and poly-time only for special cases such as the *ferromagnetic*
+    transverse-field Ising model (Bravyi 2015). Our learned J has both signs,
+    so that case does not apply;
+  - quantum Monte Carlo can fail to equilibrate in polynomial time even with no
+    sign problem (Hastings 2013).
+- At K ≤ 10 none of this matters computationally: everything is computed
+  exactly. A positive H1 result shows that this transverse-field relaxation of
+  the classical collapse helps on ARC-Easy.
+- A positive H2 result shows that sign structure in the world basis helps.
+- Neither is a quantum advantage, and neither may be described as one.
 
 ---
 
 ## 7. Diagnostics (logged per epoch on validation; final on test)
 
-| Diagnostic | Definition | What it tells |
+| Diagnostic | Definition | Tells |
 |---|---|---|
-| Γ, T | the learned scalars; also Γ/(‖J‖_F/K) | whether superposition is in use (pre-registration condition 2) |
-| ‖J‖_F | mean over items of the Frobenius norm of masked J | whether pairwise structure is learned at all |
-| J by pair type | mean and sign fraction of J for (support_n, attack_n of the same option), (support_n, support_m), (attack_n, attack_m), (support_n, attack_m) | the expected structure is J > 0 between a support and an attack on the same option; random signs mean no learned structure |
-| ground-state gap | λ₁ − λ₀: min, median, fraction < δ | degeneracy risk; how often §4.4 handling fires |
-| entanglement entropy | von Neumann entropy of ψ₀ across (i) supports \| attacks and (ii) options {0…⌈N/2⌉−1} \| rest, in nats (max 4 ln 2 = 2.77 for 4 \| 4 qubits) | entanglement between paths (pre-registration condition 3); 0 means a product state (check 9) |
-| ground-state/answer agreement | the MAP world x* = argmax P(x); fraction of items where x* switches on exactly one option (m_n(x*) = 1 for one n), and fraction where that option equals the predicted argmax p_n | whether the collapse picks a coherent world or spreads mass over incoherent ones |
-| world entropy | −Σₓ P(x) log P(x) / (K ln 2) | collapse selectivity, the analogue of C6 |
-| H1 − H0 item disagreement | items where the two arms differ, by seed | the discordant count that drives the McNemar power |
+| Γ, T | learned scalars; Γ/(‖J‖_F/K) | superposition in use (Q-2) |
+| ‖J‖_F, ‖K‖_F | means over items | pairwise structure learned at all |
+| J, r, K by pair type | mean and sign fraction for (support_n, attack_n), (support_n, support_m), (attack_n, attack_m), (support_n, attack_m) | expected: b > 0 or J > 0 between the support and attack of the same option; r structure between options; random signs = nothing learned |
+| directed asymmetry | median of ‖r − rᵀ‖_F / ‖r + rᵀ‖_F | whether the directed head uses direction at all |
+| **negative-amplitude mass** (H2, H2s, H1) | ground state ψ₀ of the learned H with its global sign fixed so the majority mass is positive; f_neg = Σ_{x: ψ₀(x)<0} ψ₀(x)² ∈ [0, 0.5] | sign structure in the computational (world) basis (I-3); must be 0 for H1 and H2s (check 12) |
+| negative thermal weight (H2) | Σ_{x≠x′} max(−ρ_xx′, 0) / Σ_{x≠x′} \|ρ_xx′\| for ρ = e^{−H/T}/Tr | sign structure in the actual readout state |
+| sign-stripped TV (H2) | ½ Σₓ \|P_T(x) − P_T⁺(x)\|, with P_T⁺ from H with off-diagonals → −\|·\| | how much the signs change the readout (I-3); exactly 0 for H1 (check 12) |
+| ground-state gap | λ₁ − λ₀: min, median, fraction < δ | degeneracy; H1-GS handling |
+| entanglement entropy | von Neumann entropy of ψ₀ across (i) supports \| attacks, (ii) options {0…⌈N/2⌉−1} \| rest; max 4 ln 2 = 2.77 nats at 4 \| 4 | entanglement between paths (Q-3); 0 = product state (check 9) |
+| ground-state/answer agreement | MAP world x* = argmax P_T(x): fraction where x* switches on exactly one option, and where that option equals the prediction | whether the collapse picks a coherent world |
+| world entropy | −Σₓ P_T log P_T / (K ln 2) | collapse selectivity (the analogue of C6) |
+| arm disagreements | items where H1 ≠ H0 and H2 ≠ H1, per seed | the discordant counts behind McNemar power |
 
 ---
 
 ## 8. Cost
 
-**Measured on this machine** [VERIFIED: `scripts/verify_path_hamiltonian.py
---bench`, Apple M4 CPU, numpy 2.5.4]: `numpy.linalg.eigh` forward on a batch of
-16 matrices takes **47 ms at K = 8 (256 × 256)** and **1.15 s at K = 10
-(1024 × 1024)**, the same in float32 and float64.
+**Measured** [VERIFIED: `scripts/verify_path_hamiltonian.py --bench`, Apple M4
+CPU, numpy 2.5.4]: `numpy.linalg.eigh` forward on 16 matrices takes **47 ms at
+K = 8** (256 × 256) and **1.15 s at K = 10** (1024 × 1024).
 
-**Memory** [DERIVED]:
-- K = 8: one H is 256² × 4 B = 262 kB, so a batch of 16 is 4.2 MB (fp32).
-- K = 10: a batch of 16 is 67 MB (fp32) or 134 MB (fp64).
-- Eigenvectors or matrix_exp intermediates multiply this by a small constant.
-  All of it is negligible on a 16 GB T4.
+**Memory** [DERIVED]: a batch of 16 H matrices is 4.2 MB at K = 8 (fp32), and
+67 MB (fp32) or 134 MB (fp64) at K = 10. H2 has the same dense size.
 
 **T4 time per training step, batch 16** [ASSUMPTION; to be measured]:
 
 | | K = 8 | K = 10 |
 |---|---|---|
 | H0 (softmax over worlds) | < 1 ms | ~1 ms |
-| H1 thermal (eigvalsh shift + matrix_exp fwd + bwd, fp64) | ~20–120 ms | ~0.5–4 s |
-| H1-GS (eigh fwd + bwd, fp64; T4 fp64 throughput is ~1/32 of fp32) | ~20–100 ms | ~0.5–3 s |
+| H1, H2, H2s thermal (eigvalsh shift + matrix_exp fwd + bwd, fp64) | ~20–120 ms | ~0.5–4 s |
+| H1-GS (eigh fwd + bwd, fp64; T4 fp64 ≈ 1/32 of fp32) | ~20–100 ms | ~0.5–3 s |
 
-- Against an assumed 1–3 s per step for v46 (improvement_plan.md §0.2), K = 8
-  adds little. K = 10 could double the step time *for the batches that contain
-  5-option items*. That depends on how many ARC-Easy items have 5 options; the
-  histogram is computed from the Tier 0 cache, not assumed.
-- **Fallback if K = 10 is too slow:** run batched power iteration on
-  (cI − H) for the ground state, or a Krylov `expm_multiply` for the thermal
-  diagonal. Both avoid the full 1024³ decomposition [ASSUMPTION: only needed if
-  measurement says so].
+- Directed head: the (B, K, K, 387) features are 16·64·387 ≈ 0.4 M floats at
+  K = 8. Negligible.
+- Against v46's assumed 1–3 s/step, K = 8 adds little. K = 10 batches may double
+  in time; the share of 5-option items comes from the Tier 0 cache histogram.
+- Fallback: a Krylov `expm_multiply` for the needed diagonal, or batched power
+  iteration [ASSUMPTION: only if measurement requires it].
 
-**CPU micro-benchmark plan** (before any T4 run; no data, synthetic H):
-1. torch CPU, fp32 and fp64: `torch.linalg.eigh` and `torch.linalg.matrix_exp`,
-   forward + backward (loss as in §5), batch 16, K = 6, 8, 10; 20 repetitions
-   after 3 warm-ups; report median and IQR.
-2. Correctness on the same code path: `torch.autograd.gradcheck` in fp64 at
-   K = 4 for H0, H1 and H1-GS; compare with this script's analytic gradients.
-3. Repeat (1) on a T4 inside the E8 timed smoke run, and record it in the
-   manifest. Replace every [ASSUMPTION] in the table above.
-4. Report the full-model step time with each arm on 20 questions, vs v46 A3.
+**CPU micro-benchmark plan** (synthetic H, before any T4 run):
+1. torch CPU, fp32 and fp64: `matrix_exp`, `eigvalsh` and `eigh`, forward +
+   backward with the §5 loss, batch 16, K = 6, 8, 10, for H1 and H2; 3 warm-ups,
+   20 repetitions; median and IQR.
+2. `torch.autograd.gradcheck` (fp64, K = 4) for H0, H1, H2, H1-GS; compare
+   with this script's analytic gradients.
+3. Repeat (1) on a T4 in the E8 smoke run and record it in the manifest.
+4. Full-model step time per arm on 20 questions, vs v46 A3.
 
 ---
 
@@ -433,91 +549,131 @@ does **not** show a quantum advantage, and it must not be described as one.
 
 | File | Change | v46 path affected? |
 |---|---|---|
-| `models/path_hamiltonian.py` (new) | `PathHamiltonian(nn.Module)`: unary and pairwise heads, constant Z/ZZ/X buffers per K, grouping by K, collapse modes `"gibbs"` (H0), `"thermal"` (H1), `"ground"` (H1-GS) with §4.4 handling; returns `scores` (B, N), `world_probs` (B, 2^K) per K-group, and the §7 diagnostics | — |
-| `models/full_model.py` | constructor flag `readout ∈ {"interference", "path"}` (default `"interference"`). With `"path"`: build `PathHamiltonian`, and **do not build** `CoherentCollapse`, `CollapseController`, `EnergyFusion`, `polarity_phase` or `phase_head` (they would receive no gradient, i.e. new A1/A2-type dead parameters). The forward branches after the selector (`models/full_model.py:364`); the v46 branch is byte-identical | No |
-| `training/ablations.py` | arms `H0_path_ising`, `H1_path_quantum`, `H1GS_path_ground` (A3 + `readout="path"` + collapse mode); `DEFAULTS` gains `readout="interference"` | No (existing arms resolve to the old default) |
-| `training/evaluate.py` | log the §7 diagnostics when `out` has `path` keys; read v46-only keys with `.get` (`classical_weights`, `interference_ratio` etc., `training/evaluate.py:143-170` [VERIFIED]), which path arms do not return | No (same values for v46 arms) |
+| `models/path_hamiltonian.py` (new) | `PathHamiltonian(nn.Module)`: unary head; directed pair head with outputs (r, b[, k]); the (a, b, r) → (h, J) mapping; constant Z/ZZ/X/pair-flip buffers per K; grouping by K. Modes: `transverse ∈ {off, learned}`, `pair_flip ∈ {off, free, nonpositive}`, `directed ∈ {on, off}`, `readout ∈ {thermal, ground}`. Returns `scores` (B, N), per-group `world_probs` (B, 2^K) and the §7 diagnostics | — |
+| `models/full_model.py` | flag `readout ∈ {"interference", "path"}` (default `"interference"`) plus a `path_cfg` dict. With `"path"`, the unused v46 readout modules (`CoherentCollapse`, `CollapseController`, `EnergyFusion`, `polarity_phase`, `phase_head`) are not built, so no new dead parameters appear (A1/A2). The forward branches after the selector (`models/full_model.py:364`); the v46 branch stays byte-identical | No |
+| `training/ablations.py` | arms `H0_path_ising`, `H1_path_tfim`, `H2_path_signed`, `H2s_path_nonpos`, `H1sym_path_tfim`, `H1GS_path_ground` (A3 + path config); `DEFAULTS` gains `readout="interference"` | No |
+| `training/evaluate.py` | log the §7 diagnostics when path keys are present; read v46-only keys with `.get` (`training/evaluate.py:143-170` [VERIFIED]) | No |
 
-- **That is 4 files**, more than CLAUDE.md's 3-file threshold, so it needs
-  approval before implementation.
-- **Checkpoints:** v46 checkpoints are unaffected. Path-arm checkpoints carry
-  their config (the A3/A5 fixes), so they are never loaded into an
-  interference model.
-- **Tests (CPU):**
-  - port checks 1–10 to torch;
-  - gradient coverage for the three arms;
-  - "v46 arm outputs are unchanged" (same seed, same batch, `readout` default
-    vs before the change, bitwise).
+- **4 files: over the 3-file threshold, so this needs approval.**
+- Path-arm checkpoints carry their config (A3/A5 fixes); v46 checkpoints are
+  unaffected.
+- CPU tests:
+  - checks 1–14 ported to torch;
+  - gradient coverage per arm;
+  - bitwise "v46 arms unchanged" before vs after.
 
 ---
 
 ## 10. Prerequisites: Tier 0 and Tier 1
 
-- **Tier 0** (improvement_plan.md). Without it, nothing here can be measured:
-  - seeds must not resume each other's checkpoints (A3/A8);
-  - the reference A3 run and the letter-pick and majority-vote baselines must
-    exist on the same items;
-  - the statistics must be item-level (B6);
-  - the gradient-coverage test must exist to catch dead parameters in the new
-    arms.
-- **Tier 1, and why D1 blocks this design specifically.** h and J are learned
-  functions of the path embeddings. If the hypotheses carry no information
-  about the answer beyond the question and options (D1; v46 gate at chance
-  [OBSERVED cell 14]), then by the data-processing inequality (dossier D1),
-  neither h nor J can carry any either. The distribution over worlds is then
-  unrelated to the answer, whatever Γ is.
-- The pairwise head is **more** data-hungry than any unary readout. Whether two
-  paths exclude or support each other is a property of the *pair*: it needs the
-  paths' content to be informative, and it must be learned from 2251 questions ×
-  K(K−1)/2 = 28 pairs each. A unary signal is a necessary condition for a
-  learnable pairwise one: J = 0 is optimal when nothing distinguishes paths.
-- A test of "superposition between paths helps" on a cache without signal can
-  only return "no difference". That would be misreported as evidence against Q,
-  when it is evidence about the cache. So H0/H1 run only on a cache that passed
-  the Tier 1 gate.
-- **Recommended, not required:**
-  - T2a (A7) first, because h reads the validator energy, whose v46 target has
-    no hypothesis axis;
-  - T2c's scalar LR group for γ and τ.
+- **Tier 0** (improvement_plan.md) is needed for anything to be measurable:
+  - no cross-seed resume (A3/A8);
+  - the A3 reference and the letter-pick and majority-vote baselines on the
+    same items;
+  - item-level statistics (B6);
+  - the gradient-coverage test (it catches dead heads in the new arms).
+- **Tier 1, and why D1 blocks this design.**
+  - Every energy term (h, J, r, K) is a learned function of the path
+    embeddings. If the hypotheses carry no information about the answer beyond
+    the question and options (D1; v46 gate at chance [OBSERVED cell 14]), then by
+    the data-processing inequality (dossier D1) none of these terms can either.
+  - The distribution over worlds is then unrelated to the answer, whatever Γ
+    or K is.
+  - Pairwise terms need *more* signal than unary ones: whether two paths
+    exclude, require or interfere with each other is a property of the pair,
+    learned from 2,251 questions × 28 pairs (K = 8).
+  - On a no-signal cache, H0 ≈ H1 ≈ H2 for reasons unrelated to superposition
+    or interference. That would be misreported as evidence against Q and I.
+  - So **these arms run only on a cache that passed the Tier 1 gate.**
+- **Recommended:** T2a (A7) first, because the unary head reads the validator
+  energy. T2c for γ and τ.
 
 ---
 
 ## 11. Risks
 
-| Risk | Mechanism | Mitigation / what we report |
+| Risk | Mechanism | Mitigation / report |
 |---|---|---|
-| **Degenerate or near-degenerate ground states** | symmetric energies make λ₁ − λ₀ → 0; eigenvector gradients ∝ 1/gap (check 10: gap 7.9e-8 at Γ = 0.01) | thermal collapse for the primary pair; for H1-GS a Γ floor, broadened backward, projector averaging and fp64 (§4.4); log the gap distribution |
-| **J does not learn without signal** | if paths are uninformative, J = 0 minimizes the loss; the pairwise head has 16,705 parameters and only 2251 questions | Tier 1 gate first; log ‖J‖_F and J by pair type; if ‖J‖_F stays near its initial value, report "no pairwise structure learned" |
-| **Γ collapses to 0** | if the classical Gibbs distribution fits better, gradient descent drives softplus(γ) towards 0, and H1 becomes H0 | this is an outcome, not a bug: pre-registration condition 2 makes it a falsifier. Do not add a Γ floor to H1 to prevent it (H1-GS has a floor for numerical reasons only, and is secondary) |
-| **Overfitting the pairwise head** | 25,220 new parameters; pair features are high-dimensional (259) | weight decay as in v46; report train vs validation accuracy (E6 logs train accuracy); optionally a narrower pair MLP (32 hidden) as a pre-declared variant, chosen on validation |
-| Saturated collapse | low T or large ‖E‖ makes P one-hot and gradients tiny (check 6: smallest Gibbs gradient 6.1e-9 on one draw) | learned T with a 0.05 floor; tanh bound on h and J; log world entropy |
-| "Both fail" ambiguity of J < 0 | Z_iZ_j coupling rewards agreement, including joint failure | stated in §2; diagnostics split J by pair type; a one-directional "requires" operator is future work |
-| Over-claiming | the state is exactly simulated, and H is stoquastic | §6 last paragraph; CLAUDE.md honesty rules; never "quantum advantage" |
-| Cost at K = 10 | 1024³ decompositions | group by K; measure first (§8); Krylov fallback |
+| Degenerate ground states (H1-GS) | gap → 0; gradients ∝ 1/gap (check 10) | thermal readout for the primary arms; §4.4 for H1-GS; log the gap |
+| J, r, K not learning without signal | zero pair terms are optimal when paths are uninformative; the pair trunk has 24,832 parameters | Tier 1 gate; log norms and per-type means; report "no pairwise structure" if they stay at init |
+| Γ collapses to 0 | the classical model fits better | a pre-registered falsifier of Q; H1 has no floor |
+| H2 learns K ≤ 0 (stoquastic) | sign structure not useful | a pre-registered falsifier of I (I-3); reported, not prevented |
+| H2 sign structure removable by a basis change | basis-dependence of stoquasticity (Marvian et al. 2019) | the claim is explicitly world-basis-specific (§4.3) |
+| H2 gain from capacity, not sign | XX couplings add flexibility | H2s control (same capacity, K ≤ 0) is required for claim I |
+| Overfitting the pair head | ~33.5 k new parameters; ordered 387-d features | v46 weight decay; train vs validation accuracy logged (E6); optional 32-unit pair MLP as a pre-declared variant chosen on validation |
+| Directed terms add no expressivity | quadratic functions = Ising energies (§2.1) | stated; H1 vs H1-sym tests inductive bias only |
+| Saturated collapse | low T or large energies make P one-hot (check 6: smallest Gibbs gradient 6.1e-9) | T floor 0.05; bounded heads; log world entropy |
+| Over-claiming | exact classical simulation; stoquastic or basis-specific signs | §4.2–4.3, §6 last paragraph; never "quantum advantage" |
+| Cost at K = 10 | 1024³ operations | group by K; measure (§8); Krylov fallback |
 
 ---
 
 ## 12. Plain-language summary for my supervisor
 
 The original qAIR idea is that reasoning paths should interact: one argument
-can rule another out, or two arguments can only stand together, and the answer
-should come from the most consistent combination of arguments. The capstone
-code never did this. Its quantum circuit looked at each argument on its own,
-and the arguments were only added up afterwards. This design gives each of the
-8 arguments for a question one qubit, so that the quantum state describes
-every possible combination of arguments being true or false (256 "worlds").
-The model learns how plausible each argument is and how each pair of
-arguments relates (exclusive or mutually supporting). The final state
-concentrates on the most consistent worlds, and the answer is read from them.
-We compare two versions that are identical except for one switch: one where
-worlds can be in quantum superposition, and one where they cannot (a classical
-model over the same worlds). We fix in advance what result would show that
-superposition helps and what result would show it does not. It is a small,
-exactly simulated system, so even a positive result is not "quantum advantage",
-and we will not call it that. It only makes sense to run once the generated
-arguments carry real information about the answer, which the capstone's did
-not. It therefore comes after the trustworthiness and evidence-quality work
+can rule another out, require another, or cancel another. The answer should
+come from the most consistent combination of arguments. The capstone never
+did this: its quantum circuit looked at each argument alone. This design gives
+each of the 8 arguments for a question one qubit, so the quantum state covers
+every combination of arguments being true or false (256 "worlds"). The model
+learns how plausible each argument is and how pairs relate, including
+one-directional "this argument only stands if that one does" links. The answer
+is read from the state.
+
+We test three versions that differ in one switch at a time:
+- a classical model over the same worlds;
+- a quantum version with superposition but, provably, no cancellation between
+  paths;
+- a quantum version whose amplitudes can carry signs, so that paths can cancel
+  each other.
+
+For each step we fix in advance which result supports the idea and which
+refutes it, including a control that rules out "it only helped because it had
+more parameters". Everything is simulated exactly on a normal GPU, so even
+positive results are not "quantum advantage", and we will say so. It only
+makes sense to run once the generated arguments carry real information about
+the answer, so it comes after the trustworthiness and evidence-quality work
 already planned.
+
+---
+
+## 13. References (each checked this session against its arXiv or publisher page)
+
+1. S. Bravyi, D. P. DiVincenzo, R. I. Oliveira, B. M. Terhal, "The Complexity
+   of Stoquastic Local Hamiltonian Problems," *Quantum Information &
+   Computation* **8**(5), 361–385 (2008); arXiv:quant-ph/0606140. Used for:
+   the definition (off-diagonal elements real and non-positive in the standard
+   basis), the connection to Perron–Frobenius, and the entrywise non-negative
+   Gibbs density matrix.
+2. S. Bravyi, "Monte Carlo simulation of stoquastic Hamiltonians," *Quantum
+   Information & Computation* **15**(13/14), 1122–1140 (2015); arXiv:1402.2295.
+   Used for: the guided stoquastic ground-energy problem is MA-complete; the
+   *ferromagnetic* transverse-field Ising model is classically simulable in
+   polynomial time.
+3. M. B. Hastings (appendix by M. H. Freedman), "Obstructions to classically
+   simulating the quantum adiabatic algorithm," *Quantum Information &
+   Computation* **13**, 1038 (2013); arXiv:1302.5733. Used for: quantum Monte
+   Carlo can fail to equilibrate in polynomial time even for systems with no
+   sign problem, such as the transverse-field Ising model. (The abstract says
+   "no sign problem"; it does not use the word "stoquastic".)
+4. M. Suzuki, "Relationship between d-Dimensional Quantal Spin Systems and
+   (d+1)-Dimensional Ising Systems: Equivalence, Critical Exponents and
+   Systematic Approximants of the Partition Function and Spin Correlations,"
+   *Progress of Theoretical Physics* **56**(5), 1454–1469 (1976);
+   doi:10.1143/PTP.56.1454. Used for: the quantum-to-classical (d+1)
+   mapping of the transverse-field Ising model. Verified from the abstract
+   only.
+5. M. Marvian, D. A. Lidar, I. Hen, "On the computational complexity of curing
+   non-stoquastic Hamiltonians," *Nature Communications* **10**, 1571 (2019);
+   doi:10.1038/s41467-019-09501-6; arXiv:1802.03408 (preprint title "On the
+   Computational Complexity of Curing the Sign Problem"). Used for: finding a
+   curing single-qubit Clifford or orthogonal transformation is NP-complete.
+
+**Not cited from a source:** the Perron–Frobenius theorem (standard linear
+algebra; checked numerically in checks 4 and 12). **Withdrawn** from the
+previous version of this document: "ground and thermal states of stoquastic
+Hamiltonians are, in general, classically samplable by path-integral Monte
+Carlo". References 2 and 3 show that this is false as a general statement.
 
 ---
 
@@ -606,21 +762,61 @@ numpy 2.5.4, Python 3.12.12
 [PASS] projector-averaged P is basis-invariant; a single eigh column is not
         claim=True   control(wrong)=False  
 
-=== Benchmark (informational): numpy.linalg.eigh, batch 16, this CPU ===
-        K= 8 (256x256) float64:     47.6 ms per batch of 16 (forward only)
-        K= 8 (256x256) float32:     47.3 ms per batch of 16 (forward only)
-        K=10 (1024x1024) float64:   1151.4 ms per batch of 16 (forward only)
-        K=10 (1024x1024) float32:   1165.8 ms per batch of 16 (forward only)
+=== 11. H2 = H1 + K XX (+ L YY) is Hermitian with the stated entries ===
+        K=6, 10 draws; YY entry = -1 where x_i = x_j, +1 where they differ
+[PASS] H2 == H2^T, real (XX and YY terms included)
+        claim=True   control(wrong)=False  
+[PASS] <x xor e_i xor e_j| X_i X_j |x> = +1 for every x
+        claim=True   control(wrong)=False  
+[PASS] <x xor e_i xor e_j| Y_i Y_j |x> = -z_i z_j (both signs occur)
+        claim=True   control(wrong)=False  
 
-SUMMARY: 22/22 checks PASS (each with its wrong-claim control failing as required)
+=== 12. Sign structure: H1 never, H2 sometimes, H2s (K <= 0) never ===
+        K=8, 200 draws, T=0.5: ground state with negative amplitudes H1 0/200, H2 189/200, H2s 0/200
+        negative entries in exp(-H/T): H1 0/200, H2 190/200, H2s 0/200
+        H2 negative amplitude mass: median 0.128, max 0.499
+        TV(P, P of sign-stripped H): H1 max 0.0e+00; H2 median 0.519, max 0.787
+[PASS] H1 (stoquastic): no ground state has a negative amplitude
+        claim=True   control(wrong)=False  
+[PASS] H2 (unconstrained K): some ground states have negative amplitudes
+        claim=True   control(wrong)=False  
+[PASS] H2s (K <= 0, stoquastic capacity control): no negative amplitudes
+        claim=True   control(wrong)=False  
+[PASS] exp(-H/T) entrywise >= 0 for H1 and H2s; negative entries occur for H2
+        claim=True   control(wrong)=False  
+[PASS] signs change the readout for H2 only (sign-stripped TV: H1 = 0, H2 > 0)
+        claim=True   control(wrong)=False  
+
+=== 13. Directed 0/1-basis terms map exactly to Ising form ===
+        K=8, 50 random (a, b, r), all 256 worlds: max |E01 - E_ising - const| = 1.1e-14
+        world (x0=1, x1=0): penalty 1.00 under r_01 = 1, 0.00 under r_10 = 1
+[PASS] x_i(1 - x_j) terms reproduced exactly for every world
+        claim=True   control(wrong)=False  
+[PASS] the mapped Ising form keeps the direction (r_01 != r_10)
+        claim=True   control(wrong)=False  
+
+=== 14. Thermal-collapse gradient for H2 matches finite differences (K = 4) ===
+        5 draws; parameters: 4 h, 6 J, 1 a, 6 K_xx; worst relative error 3.58e-09
+[PASS] H2 thermal gradient (Daleckii-Krein) == central finite differences (rel err < 1e-5)
+        claim=True   control(wrong)=False  
+
+=== Benchmark (informational): numpy.linalg.eigh, batch 16, this CPU ===
+        K= 8 (256x256) float64:     47.7 ms per batch of 16 (forward only)
+        K= 8 (256x256) float32:     47.6 ms per batch of 16 (forward only)
+        K=10 (1024x1024) float64:   1145.3 ms per batch of 16 (forward only)
+        K=10 (1024x1024) float32:   1149.5 ms per batch of 16 (forward only)
+
+SUMMARY: 33/33 checks PASS (each with its wrong-claim control failing as required)
 ```
 
 ## Appendix B — decisions this design needs
 
-| # | Decision | Recommendation |
+| # | Decision | Status / recommendation |
 |---|---|---|
-| P-1 | Approve the H0/H1 arms (thermal collapse, single variable Γ) and the secondary H1-GS arm | Approve, after the Tier 1 gate |
-| P-2 | Accept the thermal collapse for the primary pair, since a ground-state H0 at Γ = 0 has zero gradient (check 6) | Accept; ground state kept as H1-GS and as the T → 0 limit |
-| P-3 | Run prior-on variants (H0-F, H1-F) for a deployed-system comparison? | Only if H1 vs H0 is positive |
-| P-4 | Approve the 4-file change (§9), over the 3-file threshold | Approve, as one reviewed change behind a default-off flag |
-| P-5 | Keep the per-hypothesis 6-qubit circuit upstream (rule 6), or test removing it as a later single-variable arm | Keep; removal only as a separate arm |
+| P-1 | Approve the path arms H0/H1 (claim Q) | Recommend approval, after the Tier 1 gate |
+| P-2 | Thermal-state readout at learned T for H0 and H1; H1-GS kept as secondary | **Accepted 2026-10-18** |
+| P-3 | Prior-on variants for a deployed-system comparison | Only if a primary contrast is positive |
+| P-4 | Approve the 4-file integration (§9) | Recommend approval, behind a default-off flag |
+| P-5 | Keep the per-hypothesis 6-qubit circuit upstream (rule 6) | Keep; removal only as a separate arm |
+| P-6 | Approve H2 (non-stoquastic XX couplings) with the H2s capacity control (claim I); XX only, or XX + YY | Recommend XX only (one sign-controlled term, so H2s is well defined); YY as a later variant |
+| P-7 | Directed (a, b, r) pair head as the default, with the symmetric-only H1-sym ablation | Recommend approval |
