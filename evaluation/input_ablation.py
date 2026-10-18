@@ -41,8 +41,6 @@ from config import (
     CACHE_DIR,
     BATCH_SIZE,
     EMBEDDING_DIM,
-    MODEL_DIM,
-    N_QUBITS,
     ARC_CONFIG,
     resolve_device,
 )
@@ -216,23 +214,145 @@ def report(results, threshold=0.005):
     return passed
 
 
+# Every key QAIRvNext needs to rebuild a trained arm. All arms share one
+# parameter set, so load_state_dict cannot detect a wrong config (A5): a
+# missing key is an error, never a default. "backend" is optional because
+# only the classical-control arms set it.
+MODEL_CONFIG_KEYS = (
+    "model_dim",
+    "use_quantum",
+    "use_validator",
+    "persistent_steps",
+    "n_qubits",
+    "use_question",
+    "phase_mode",
+    "phase_source",
+    "mixing",
+    "use_llm_prior",
+    "use_attack",
+)
+
+
+class ModelConfigError(RuntimeError):
+    """The configuration a checkpoint was trained with is missing or contradicted."""
+
+
 def build_model_from_config(cfg, device):
+
+    missing = [k for k in MODEL_CONFIG_KEYS if k not in cfg]
+
+    if missing:
+        raise ModelConfigError(f"model config lacks {missing}: {cfg}")
 
     return QAIRvNext(
         dim=EMBEDDING_DIM,
-        model_dim=cfg.get("model_dim", MODEL_DIM),
-        use_quantum=cfg.get("use_quantum", False),
-        use_validator=cfg.get("use_validator", False),
-        persistent_steps=cfg.get("persistent_steps", 3),
-        n_qubits=cfg.get("n_qubits", N_QUBITS),
         backend=cfg.get("backend"),
-        use_question=cfg.get("use_question", True),
-        phase_mode=cfg.get("phase_mode", "learned"),
-        phase_source=cfg.get("phase_source", "circuit"),
-        mixing=cfg.get("mixing", "orthogonal"),
-        use_llm_prior=cfg.get("use_llm_prior", True),
-        use_attack=cfg.get("use_attack", True),
+        **{k: cfg[k] for k in MODEL_CONFIG_KEYS},
     ).to(device)
+
+
+def _architecture(cfg):
+    return {k: cfg.get(k) for k in MODEL_CONFIG_KEYS + ("backend",)}
+
+
+def resolve_model_config(ckpt, ckpt_path, config_path=None):
+    """
+    Format-2 checkpoints carry their model config in their provenance; an
+    explicit config_path must then agree with it. Format-1 (v46)
+    checkpoints need config_path or the {run}_config.pt written next to
+    {run}_best.pt (only qair_v45 / qair_v46 have one). Anything else raises.
+    """
+
+    explicit = load_checkpoint_file(config_path) if config_path else None
+
+    provenance = ckpt.get("provenance")
+
+    if provenance is not None:
+
+        cfg = provenance["model_config"]
+
+        if explicit is not None and _architecture(explicit) != _architecture(cfg):
+            raise ModelConfigError(
+                f"--config {config_path} contradicts the config stored in "
+                f"{ckpt_path}:\n  --config   : {_architecture(explicit)}\n"
+                f"  checkpoint: {_architecture(cfg)}"
+            )
+
+        return cfg
+
+    if explicit is not None:
+        return explicit
+
+    sidecar = (
+        ckpt_path[: -len("_best.pt")] + "_config.pt"
+        if ckpt_path.endswith("_best.pt") else None
+    )
+
+    if sidecar is None or not os.path.exists(sidecar):
+        raise ModelConfigError(
+            f"{ckpt_path} is a format-1 checkpoint with no stored config and "
+            f"no {sidecar or '<run>_config.pt'}. Pass --config with the "
+            f"exact config it was trained with; there is no default."
+        )
+
+    return load_checkpoint_file(sidecar)
+
+
+def load_for_ablation(ckpt_path, config_path, split, cache_dir, arc_config,
+                      max_samples, device):
+    """
+    Rebuilds the checkpoint's model and the evaluation loader. For a
+    format-2 checkpoint, arc_config and (on validation) max_samples default
+    to the run's, and the validation data must be the data the run
+    validated on: same size and same hypotheses hash.
+    """
+
+    ckpt = load_checkpoint_file(ckpt_path, map_location=device)
+
+    model = build_model_from_config(
+        resolve_model_config(ckpt, ckpt_path, config_path), device,
+    )
+    model.load_state_dict(ckpt["model"])
+
+    provenance = ckpt.get("provenance")
+
+    if provenance is not None:
+
+        if arc_config is not None and arc_config != provenance["arc_config"]:
+            raise ModelConfigError(
+                f"--arc-config {arc_config} but {ckpt_path} was trained on "
+                f"{provenance['arc_config']}"
+            )
+
+        arc_config = provenance["arc_config"]
+
+        if split == "validation" and max_samples is None:
+            max_samples = provenance["n_val"]
+
+    ds = QAIRDataset(
+        split=split, max_samples=max_samples, cache_dir=cache_dir,
+        arc_config=arc_config or ARC_CONFIG,
+    )
+
+    if provenance is not None and split == "validation":
+
+        seen = (len(ds), ds.hypotheses_sha256())
+        trained = (provenance["n_val"], provenance["val_hypotheses_sha256"])
+
+        if seen != trained:
+            raise ModelConfigError(
+                f"validation data differs from the run's: this cache gives "
+                f"(n, sha256) = {seen}, {ckpt_path} validated on {trained}"
+            )
+
+    loader = DataLoader(
+        ds,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        collate_fn=partial(collate_fn, shuffle_options=False),
+    )
+
+    return model, loader
 
 
 def main():
@@ -242,7 +362,10 @@ def main():
     parser.add_argument("--config", type=str, default=None)
     parser.add_argument("--split", type=str, default="validation")
     parser.add_argument("--cache-dir", type=str, default=CACHE_DIR)
-    parser.add_argument("--arc-config", type=str, default=ARC_CONFIG)
+    parser.add_argument(
+        "--arc-config", type=str, default=None,
+        help=f"Default: the checkpoint's dataset, else {ARC_CONFIG}.",
+    )
     parser.add_argument("--max-samples", type=int, default=None)
     args = parser.parse_args()
 
@@ -250,28 +373,9 @@ def main():
 
     device = resolve_device()
 
-    cfg_path = args.config or args.ckpt.replace("_best.pt", "_config.pt")
-
-    if os.path.exists(cfg_path):
-        cfg = load_checkpoint_file(cfg_path)
-    else:
-        print(f"[WARN] no config at {cfg_path}; assuming full hybrid")
-        cfg = {"use_quantum": True, "use_validator": True, "persistent_steps": 3}
-
-    model = build_model_from_config(cfg, device)
-
-    model.load_state_dict(load_checkpoint_file(args.ckpt, map_location=device)["model"])
-
-    ds = QAIRDataset(
-        split=args.split, max_samples=args.max_samples,
-        cache_dir=args.cache_dir, arc_config=args.arc_config,
-    )
-
-    loader = DataLoader(
-        ds,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-        collate_fn=partial(collate_fn, shuffle_options=False),
+    model, loader = load_for_ablation(
+        args.ckpt, args.config, args.split, args.cache_dir,
+        args.arc_config, args.max_samples, device,
     )
 
     passed = report(input_ablation(model, loader, device))

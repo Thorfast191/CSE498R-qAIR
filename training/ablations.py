@@ -258,7 +258,9 @@ def run_ablation_suite(
                 arm=name,
                 arc_config=arc_config,
                 seed=seed,
-                model_config={**resolved, "n_qubits": n_qubits},
+                model_config={
+                    **resolved, "n_qubits": n_qubits, "model_dim": MODEL_DIM,
+                },
                 train_config=training_config(
                     epochs, patience, wd, train_samples, val_samples,
                 ),
