@@ -200,7 +200,30 @@ class QAIRDataset(Dataset):
             # Only the paths below may return early. A cache that failed to
             # load leaves samples empty, and returning here would hand the
             # caller a silently EMPTY dataset instead of rebuilding.
+            # v45 caches have no per-sample score flag; nothing was flagged
+            # then, so the honest default is "not recorded as failed".
+            for sample in self.samples:
+                sample.setdefault("score_failed", False)
+
             if self.samples:
+
+                # A complete cache is final: return it (or its first
+                # max_samples) and never enter the build path. Falling
+                # through used to re-save it with complete=False.
+                if is_complete:
+
+                    if max_samples is not None and len(self.samples) > max_samples:
+                        self.samples = self.samples[:max_samples]
+                        print(f"[CACHE TRUNCATED TO max_samples] "
+                              f"{len(self.samples)} samples")
+
+                    elif max_samples is not None and len(self.samples) < max_samples:
+                        print(f"[CACHE COMPLETE] the {split} split has only "
+                              f"{len(self.samples)} samples; returning all "
+                              f"{len(self.samples)} (max_samples={max_samples})")
+
+                    self.report_quality(split)
+                    return
 
                 if max_samples is not None and len(self.samples) >= max_samples:
                     # Caller wants a capped subset and we already have enough.
@@ -218,10 +241,6 @@ class QAIRDataset(Dataset):
                     self.report_quality(split)
                     return
 
-                if is_complete and max_samples is None:
-                    self.report_quality(split)
-                    return
-
             print(
                 f"[CACHE INCOMPLETE] {len(self.samples)} samples, "
                 f"raw_index {resume_raw_index}, complete={is_complete}"
@@ -234,6 +253,17 @@ class QAIRDataset(Dataset):
         if not allow_build:
             self._refuse_build(
                 cache_path, split, max_samples, is_complete, resume_raw_index
+            )
+
+        ds = load_arc(self.arc_config)
+
+        if split not in ds:
+            # Never substitute another split: a "test" cache silently built
+            # from validation items would leak into model selection.
+            raise ValueError(
+                f"Split {split!r} does not exist in {self.arc_config}; "
+                f"available splits: {sorted(ds.keys())}. Choose one of them, "
+                f"or carve the split out explicitly in the dataset adapter."
             )
 
         if self.samples:
@@ -265,16 +295,6 @@ class QAIRDataset(Dataset):
             raise
 
         encoder = HypothesisEncoder()
-
-        ds = load_arc(self.arc_config)
-
-        if split not in ds:
-
-            if "validation" in ds:
-                split = "validation"
-
-            else:
-                split = list(ds.keys())[0]
 
         raw = ds[split]
 
@@ -326,9 +346,21 @@ class QAIRDataset(Dataset):
 
             try:
                 scores_list = generator.score_options(questions, options_list)
+                score_failed = [False] * len(questions)
             except Exception as e:
-                print(f"[OPTION SCORING FAILED] {e} -- storing zeros")
-                scores_list = [[0.0] * len(o) for o in options_list]
+                # Retry one question at a time, so one bad item does not
+                # zero the LLM prior for the whole batch; flag what still fails.
+                print(f"[OPTION SCORING FAILED] {e} -- retrying per question")
+                scores_list, score_failed = [], []
+                for q, opts in zip(questions, options_list):
+                    try:
+                        scores_list.append(generator.score_options([q], [opts])[0])
+                        score_failed.append(False)
+                    except Exception as item_error:
+                        print(f"[OPTION SCORING FAILED] {item_error} -- storing "
+                              f"zeros and score_failed=True for: {q[:60]!r}")
+                        scores_list.append([0.0] * len(opts))
+                        score_failed.append(True)
 
             all_hyp_texts = [h for item in batch_out for h in item["hypotheses"]]
             all_opt_texts = [o for options in options_list for o in options]
@@ -380,6 +412,8 @@ class QAIRDataset(Dataset):
                     "llm_logprob": torch.tensor(
                         scores_list[qi], dtype=torch.float
                     ),
+
+                    "score_failed": score_failed[qi],
 
                     "Q": Q_all[qi].cpu(),
 
@@ -919,6 +953,16 @@ class QAIRDataset(Dataset):
             print(
                 "  [WARNING] >10% fallbacks. These carry no information about "
                 "which option is correct."
+            )
+
+        n_sf = sum(int(bool(s.get("score_failed", False))) for s in self.samples)
+
+        print(f"  option scoring: score_failed {n_sf}/{n_total}")
+
+        if n_sf:
+            print(
+                f"  [WARNING] {n_sf} samples have llm_logprob = 0 because "
+                "scoring failed; the LLM prior is absent for exactly those items."
             )
 
         # ---------------- signal ----------------

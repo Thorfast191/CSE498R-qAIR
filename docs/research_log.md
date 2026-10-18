@@ -70,3 +70,17 @@ fix commit cannot name itself.
   scope in issues.md.
 - **Not done:** no ARC-Easy cache, no training.
 
+---
+
+## 2026-10-18 — A6: cache edge cases
+
+- **Commit:** see the follow-up entry below.
+- **Change:** complete caches are final; a missing split raises; batch
+  scoring failures retried per question, with per-sample `score_failed`
+  reported by `report_quality`; cache version kept at 46 with a loader
+  default. Files: `training/dataset.py`, `tests/test_cache_edge_cases.py` (new).
+- **Results:** `python -m pytest tests -q` → 23 passed, 1 skipped in 4.2 s.
+  Mutations: old early return → 2 failed; split substitution → 1 failed;
+  batch zeros → 1 failed.
+- **Not done:** no ARC-Easy cache, no training.
+

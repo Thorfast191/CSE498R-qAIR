@@ -171,7 +171,7 @@ this repo decides.
   accuracy.
 
 ### A6 — Cache edge cases silently change state or data
-- **Category:** A · **Severity:** Medium · **Status:** open
+- **Category:** A · **Severity:** Medium · **Status:** **fixed** (commit: see research_log.md)
 - **Evidence:** (1) `training/dataset.py:154-172` + `:437-439`: a complete cache
   smaller than `max_samples` is re-saved as `complete=False`.
   (2) `:203-209`: a missing split is silently replaced by `validation`.
@@ -180,6 +180,32 @@ this repo decides.
   for the scoring failure.
 - **Proposed fix / verify:** Treat `complete` as final, raise on a missing split,
   add a per-sample `score_failed` flag. Unit tests with a fake generator.
+- **State after E7:** case (1) could still happen through
+  `scripts/build_cache.py` (`allow_build=True`), e.g. `--limit 3000` on a
+  complete 2,251-item train cache; a plain read raised instead of returning
+  the cache.
+- **Fix (2026-10-18):**
+  1. a complete cache is final: it returns all samples (or the first
+     `max_samples`, printing `[CACHE COMPLETE] … returning all N` when fewer
+     exist) and never enters the build path, even with `allow_build=True`;
+  2. a missing split raises `ValueError` with the available splits, checked
+     before any lock or model load (`load_arc` moved ahead of the generator);
+  3. a batch scoring failure is retried per question; only questions that
+     still fail get zero `llm_logprob` and `score_failed=True` (others
+     `False`); `report_quality` prints `score_failed n/N` and warns if > 0.
+  - **Cache version kept at 46** (decided 2026-10-18): 46 was introduced by
+    E3 the same day and no real v46 cache existed yet. The loader sets
+    `score_failed = False` when the key is absent (v45 caches, which never
+    recorded it).
+- **Test evidence:** `tests/test_cache_edge_cases.py` 5 passed: a complete
+  29-sample cache read with `max_samples=40` returns 29 with and without
+  `allow_build`, stays byte-identical and `complete=True`, and never constructs
+  the generator; `split="test"` on a train/validation-only dataset raises and
+  leaves no cache or lock; with a batch scorer that fails and one question
+  that fails alone, exactly that sample is flagged with zeros and the
+  report prints `score_failed 1/8`; a sample without the key reads as
+  `False`. Full suite 23 passed, 1 skipped. Mutations (old early return; split
+  substitution; batch zeros) each fail their test.
 
 ### A7 — v46 validator relevance target has no hypothesis axis *(new)*
 - **Category:** A · **Severity:** High · **Status:** open · **fix needs supervisor approval**

@@ -478,6 +478,12 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** none. **Needs supervisor approval?** No.
 
 #### A6 Cache edge cases silently change state or data
+- **Status:** **fixed 2026-10-18** (commit in docs/research_log.md; evidence in
+  issues.md A6). **Versioning decision:** the per-sample `score_failed` flag
+  was added **without** bumping `CACHE_VERSION` past 46, because 46 was
+  introduced by E3 the same day and no real v46 cache had been built; the
+  loader defaults the flag to `False` when absent (v45 caches). This replaces
+  the "bump `CACHE_VERSION`" step proposed below.
 - **Category / severity / blocks:** A / Medium / should precede the ARC-Easy cache build.
 - **Observation:** found by reading the code. No run has hit it yet
   [VERIFIED: code].
