@@ -126,7 +126,7 @@ this repo decides.
 - **Proposed fix / verify:** As for A1. Record trainable-parameter counts per arm.
 
 ### A3 — Single-run name lacks the seed; resume ignores the config
-- **Category:** A · **Severity:** High · **Status:** **fixed** (commit: see research_log.md)
+- **Category:** A · **Severity:** High · **Status:** **fixed** in `f605c55`
 - **Evidence:** `training/runner.py:125` sets `name="qair_v45.1"`.
   `training/checkpoint.py:15,25-46` loads `{name}_latest.pt` with no seed or
   config check. `--mode train --seed 43` after a seed-42 run therefore resumes
@@ -538,7 +538,7 @@ Fix-order placement: dossier §3 (A8 with A3; E10/E11 with E6; B11 in Phase 3
 as measurement only; D5 in Phase 4; C6/C7 for the supervisor).
 
 ### A8 — Ablation grid resumes stale checkpoints from earlier sessions
-- **Category:** A · **Severity:** High · **Status:** **fixed going forward** with A3 (commit: see research_log.md).
+- **Category:** A · **Severity:** High · **Status:** **fixed going forward** with A3 in `f605c55`.
   The v46 grid numbers stay invalid; nothing re-runs them. The per-version
   `CKPT_DIR` was **not** added (decision 2026-10-19): with the dataset in the
   run key and the code fingerprint checked, a stale checkpoint raises

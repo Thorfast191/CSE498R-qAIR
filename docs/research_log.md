@@ -89,7 +89,7 @@ fix commit cannot name itself.
 
 ## 2026-10-19 — A3 + A8: provenance-checked checkpoints
 
-- **Commit:** see the follow-up entry below.
+- **Commit:** `f605c55`.
 - **Change:** run key `f"{arm}_{arc_config}_s{seed}"`; checkpoint format 2
   with `provenance` (config, seed, data hashes, code fingerprint; commit,
   torch version, device informational); resume and best-checkpoint loads
