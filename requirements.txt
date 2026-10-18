@@ -1,3 +1,7 @@
+# torch is pinned to exactly what Colab ships on a T4, recorded by the
+# Step 6 notebook (E11). Until then training/environment.py records torch
+# (and compares it on resume) but does not check it against this file.
+# Never force-reinstall torch on Colab.
 torch
 
 transformers==4.52.4

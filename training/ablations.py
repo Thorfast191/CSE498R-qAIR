@@ -23,6 +23,7 @@ from training.checkpoint import (
 )
 from training.evaluate import evaluate
 from training.runner import build_loaders
+from training.environment import check_pins, describe, write_package_list
 from training.seed import set_seed
 
 from models.full_model import QAIRvNext
@@ -192,6 +193,7 @@ def run_ablation_suite(
     train_samples=None,
     val_samples=None,
     deterministic_warn_only=DETERMINISTIC_WARN_ONLY,
+    ignore_pin_mismatch=False,
 ):
     """
     Runs every config under every seed.
@@ -213,6 +215,9 @@ def run_ablation_suite(
 
     if unknown:
         raise KeyError(f"unknown ablation config(s): {unknown}")
+
+    # Before anything else: a mismatched environment must not train.
+    pin_check = check_pins(override=ignore_pin_mismatch)
 
     results = {}
 
@@ -276,7 +281,10 @@ def run_ablation_suite(
                 train_loader=train_loader,
                 val_loader=val_loader,
                 device=device,
+                pin_check=pin_check,
             )
+
+            print(describe(provenance))
 
             trainer = Trainer(
                 model=model,
@@ -291,11 +299,15 @@ def run_ablation_suite(
 
             # A finished run is skipped only when its provenance matches;
             # a checkpoint from another session, commit or cache raises.
+            write_package_list(os.path.join(ckpt_dir, f"{run_name}_env.txt"))
+
             state = load_or_resume(
                 trainer, ckpt_dir, run_name, epochs, provenance
             )
 
             history = trainer.train_from(state, epochs, patience=patience)
+
+            history["provenance"] = provenance
 
             entry = {
                 "config": resolved,
@@ -309,6 +321,7 @@ def run_ablation_suite(
                     if history.get("interference_ratio") else None
                 ),
                 "history": history,
+                "environment": describe(provenance),
             }
 
             if test_loader is not None:
@@ -340,6 +353,8 @@ def summarize(results):
     print("\n" + "=" * 92)
     print("Ablation Suite Complete -- mean +/- std across seeds")
     print("=" * 92)
+    for line in sorted({r["environment"] for runs in results.values() for r in runs}):
+        print(line)
     print(f"{'config':<34s} {'val acc':>16s} {'test acc':>16s} "
           f"{'pw cos':>8s} {'phase':>8s} {'destr':>8s}")
 

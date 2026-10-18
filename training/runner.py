@@ -34,6 +34,7 @@ from training.checkpoint import (
     load_best, load_or_resume, run_key, run_provenance, training_config,
 )
 from training.evaluate import evaluate
+from training.environment import check_pins, describe, write_package_list
 from training.seed import set_seed, seeded_generator
 
 from models.full_model import QAIRvNext
@@ -136,6 +137,7 @@ def run_training(
     use_llm_prior=USE_LLM_PRIOR,
     use_attack=True,
     deterministic_warn_only=DETERMINISTIC_WARN_ONLY,
+    ignore_pin_mismatch=False,
 ):
     """
     name is the arm label; the checkpoint key is run_key(name, arc_config,
@@ -143,6 +145,9 @@ def run_training(
     """
 
     run_name = run_key(name, arc_config, seed)
+
+    # Before anything else: a mismatched environment must not train.
+    pin_check = check_pins(override=ignore_pin_mismatch)
 
     print("=" * 60)
     print(f"qAIR-v45.1 TRAINING  ({arc_config})  run {run_name}")
@@ -189,7 +194,10 @@ def run_training(
         train_loader=train_loader,
         val_loader=val_loader,
         device=device,
+        pin_check=pin_check,
     )
+
+    print(describe(provenance))
 
     trainer = Trainer(
         model=model,
@@ -202,9 +210,13 @@ def run_training(
         weight_decay=WEIGHT_DECAY,
     )
 
+    write_package_list(os.path.join(ckpt_dir, f"{run_name}_env.txt"))
+
     state = load_or_resume(trainer, ckpt_dir, run_name, epochs, provenance)
 
     history = trainer.train_from(state, epochs, patience=patience)
+
+    history["provenance"] = provenance
 
     config_path = os.path.join(ckpt_dir, f"{run_name}_config.pt")
     torch.save(
@@ -235,5 +247,7 @@ def run_training(
               f"pairwise_cos = {test_metrics['pairwise_cos']:.4f}  "
               f"interference = {test_metrics['interference_ratio']:.4f}")
         print("=" * 60)
+
+    print(f"[{run_name}] {describe(provenance)}")
 
     return history

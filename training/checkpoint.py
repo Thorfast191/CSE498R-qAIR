@@ -8,6 +8,7 @@ import torch
 from config import (
     BASE_LR, BATCH_SIZE, CACHE_VERSION, DETERMINISTIC, LABEL_SMOOTHING, NEW_LR,
 )
+from training.environment import environment_record
 from training.seed import restore_rng_state
 
 
@@ -23,9 +24,12 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CODE_PATHSPECS = ("*.py", "requirements.txt")
 
 # Recorded for the reader, never compared: the full commit changes with
-# docs-only commits, and the device does not define the run.
+# docs-only commits, the device does not define the run, and only the
+# versions in "environment" (torch, CUDA, pennylane, lightning) decide the
+# computation (E11).
 INFORMATIONAL_KEYS = (
-    "git_commit", "torch_version", "device", "cublas_workspace_config",
+    "git_commit", "device", "cublas_workspace_config", "environment_info",
+    "pin_check",
 )
 
 
@@ -116,7 +120,7 @@ def training_config(epochs, patience, weight_decay, train_samples, val_samples,
 
 
 def run_provenance(arm, arc_config, seed, model_config, train_config,
-                   train_loader, val_loader, device, repo_root=None):
+                   train_loader, val_loader, device, pin_check, repo_root=None):
     """
     Everything that must match for a checkpoint to be resumed, plus a few
     informational fields. Normalized through JSON so it holds only plain
@@ -124,6 +128,8 @@ def run_provenance(arm, arc_config, seed, model_config, train_config,
     """
 
     train_ds, val_ds = train_loader.dataset, val_loader.dataset
+
+    environment, environment_info = environment_record()
 
     provenance = {
         "arm": arm,
@@ -137,7 +143,9 @@ def run_provenance(arm, arc_config, seed, model_config, train_config,
         "train_hypotheses_sha256": train_ds.hypotheses_sha256(),
         "val_hypotheses_sha256": val_ds.hypotheses_sha256(),
         **code_provenance(repo_root),
-        "torch_version": str(torch.__version__),
+        "environment": environment,
+        "environment_info": environment_info,
+        "pin_check": pin_check,
         "device": str(device),
         "cublas_workspace_config": os.environ.get("CUBLAS_WORKSPACE_CONFIG"),
     }

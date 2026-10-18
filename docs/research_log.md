@@ -201,3 +201,29 @@ fix commit cannot name itself.
   prediction diff; print any op that raises under strict mode; check
   `lightning.gpu` for its own nondeterminism.
 - **Not done:** no ARC-Easy cache, no real training.
+
+---
+
+## 2026-10-19 — E11: environment checked at startup and recorded
+
+- **Commit:** see the follow-up entry below.
+- **Change:** `training/environment.py` (pin check for runtime packages,
+  environment record, package list, `describe`); provenance `environment`
+  (compared) / `environment_info` and `pin_check` (recorded);
+  `--ignore-pin-mismatch`; `{run}_env.txt`; environment line printed and
+  stored with every result; `requirements.txt` comment (torch pin deferred
+  to Step 6). Files: `training/environment.py` (new),
+  `training/checkpoint.py`, `training/runner.py`, `training/ablations.py`,
+  `main.py`, `requirements.txt`, `tests/test_environment.py` (new),
+  `tests/test_checkpoint_provenance.py`.
+- **Environment:** `qenv` scratch venv (torch 2.14.1 CPU, cuda None,
+  pennylane 0.42.3, pennylane-lightning 0.42.0; transformers 4.52.4,
+  accelerate 1.7.0, datasets 3.6.0, huggingface_hub 0.33.4 match their
+  pins).
+- **Results:** `python -m pytest tests/test_environment.py -q` → 7 passed;
+  `python -m pytest tests -q` → 85 passed, 1 skipped in 52.03 s. Five
+  mutations each fail ≥ 1 test (the grid-summary one only after the test
+  was tightened to read the summary section).
+- **Pending (Step 6):** T4 torch/CUDA/pip freeze, `pip check`, uninstall
+  diffusers/gradio/jax, then pin torch.
+- **Not done:** no ARC-Easy cache, no real training.

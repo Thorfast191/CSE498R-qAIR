@@ -50,6 +50,12 @@ def main():
              "implementation (recorded in the checkpoint provenance).",
     )
 
+    parser.add_argument(
+        "--ignore-pin-mismatch", action="store_true",
+        help="Train even if installed versions differ from requirements.txt "
+             "(recorded in the provenance and printed with every result).",
+    )
+
     args = parser.parse_args()
 
     # set_seed lived in training/seed.py for the project's whole history
@@ -64,6 +70,7 @@ def main():
             with_test=not args.no_test,
             arc_config=args.arc_config,
             deterministic_warn_only=args.deterministic_warn_only,
+            ignore_pin_mismatch=args.ignore_pin_mismatch,
         )
 
     elif args.mode == "ablation":
@@ -76,6 +83,7 @@ def main():
             arc_config=args.arc_config,
             configs=args.configs,
             deterministic_warn_only=args.deterministic_warn_only,
+            ignore_pin_mismatch=args.ignore_pin_mismatch,
         )
 
 

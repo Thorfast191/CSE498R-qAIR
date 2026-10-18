@@ -56,7 +56,10 @@ def provenance(**overrides):
         "git_commit": "c" * 40,
         "code_sha256": "d" * 64,
         "code_diff_sha256": None,
-        "torch_version": str(torch.__version__),
+        "environment": {"torch": "2.14.1", "cuda": None,
+                        "pennylane": "0.42.3", "pennylane-lightning": "0.42.0"},
+        "environment_info": {"python": "3.12.12", "packages_sha256": "1" * 64},
+        "pin_check": {"mismatches": [], "overridden": False},
         "device": "cpu",
     }
     base.update(overrides)
@@ -126,6 +129,14 @@ def test_resume_with_matching_provenance(tmp_path):
     ("train_hypotheses_sha256", "e" * 64),
     ("code_sha256", "f" * 64),
     ("code_diff_sha256", "0" * 64),
+    ("environment", {"torch": "2.15.0", "cuda": None,
+                     "pennylane": "0.42.3", "pennylane-lightning": "0.42.0"}),
+    ("environment", {"torch": "2.14.1", "cuda": "12.4",
+                     "pennylane": "0.42.3", "pennylane-lightning": "0.42.0"}),
+    ("environment", {"torch": "2.14.1", "cuda": None,
+                     "pennylane": "0.43.0", "pennylane-lightning": "0.42.0"}),
+    ("environment", {"torch": "2.14.1", "cuda": None,
+                     "pennylane": "0.42.3", "pennylane-lightning": "0.43.0"}),
 ])
 def test_resume_refuses_any_mismatch_and_leaves_file(tmp_path, key, value):
     save(tiny_trainer(tmp_path, provenance()), 3, 0.5)
@@ -143,7 +154,11 @@ def test_resume_refuses_any_mismatch_and_leaves_file(tmp_path, key, value):
 
 def test_informational_fields_do_not_block_resume(tmp_path):
     save(tiny_trainer(tmp_path, provenance()), 0, 0.1)
-    current = provenance(git_commit="9" * 40, torch_version="0.0", device="mps")
+    current = provenance(
+        git_commit="9" * 40, device="mps",
+        environment_info={"python": "3.13.0", "packages_sha256": "2" * 64},
+        pin_check={"mismatches": [{"package": "datasets"}], "overridden": True},
+    )
 
     state = load_or_resume(
         tiny_trainer(tmp_path, current), str(tmp_path),

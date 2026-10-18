@@ -662,13 +662,60 @@ as measurement only; D5 in Phase 4; C6/C7 for the supervisor).
   and may have its own nondeterminism [ASSUMPTION]; that run checks it.
 
 ### E11 — Environment not pinned; resolver conflicts in the v46 run
-- **Category:** E · **Severity:** Medium · **Status:** open
+- **Category:** E · **Severity:** Medium · **Status:** **fixed except the torch pin** (commit: see research_log.md); torch pin pending (Step 6)
 - **Evidence:** cell 8: `huggingface-hub 0.33.4` incompatible with
   `diffusers 0.39.0` / `gradio 6.20.0`; cell 10: PennyLane warns about JAX
   0.7.2 > 0.6.2; `requirements.txt:1` leaves torch unpinned.
 - **Proposed fix:** pin torch; record `pip freeze` in the manifest (E6); install
   reported runs into a clean environment.
 - **Verify:** identical `pip freeze` hash across installs; no resolver errors in the log.
+- **Also verified (2026-10-19):** the executed v46 notebook never printed
+  its torch or CUDA version (grep), so there is no recorded version to pin.
+- **Fix (2026-10-19, decisions approved 2026-10-19):** new
+  `training/environment.py`:
+  1. `check_pins` runs first in `run_training` and `run_ablation_suite`:
+     every **runtime** package (torch, transformers, accelerate, datasets,
+     huggingface_hub, pennylane, pennylane-lightning) that has an `==` pin
+     in `requirements.txt` must be installed at that version, else
+     `EnvironmentMismatchError` before any loader, model or file is
+     created. The plotting/analysis pins (scikit-learn, matplotlib,
+     seaborn, umap-learn, plotly, networkx) are not imported by training
+     and are recorded only. `--ignore-pin-mismatch` (and
+     `ignore_pin_mismatch=`) overrides; the result (`pin_check`:
+     mismatches, overridden) goes into the provenance;
+  2. torch is still unpinned (decision: pin from the Step 6 T4 run;
+     `requirements.txt` says so), so it is recorded but not checked
+     against `requirements.txt`;
+  3. provenance `environment` = torch, CUDA, pennylane,
+     pennylane-lightning versions, **compared on resume**;
+     `environment_info` = python, pennylane-lightning-gpu, transformers,
+     accelerate, datasets, huggingface_hub, numpy, and sha256 of the full
+     installed-package list, **recorded only**; the old informational
+     `torch_version` field is replaced by `environment.torch`;
+  4. each run writes `{run}_env.txt` (all installed `name==version`,
+     from `importlib.metadata`) next to its checkpoint;
+  5. `describe(provenance)` (versions + pin-check state, `pins OVERRIDDEN …`
+     when overridden) is printed at the start and end of `--mode train`,
+     per grid arm, in the grid summary, stored in each grid result entry
+     (`environment`), and `history["provenance"]` is saved in every
+     history and returned result.
+- **Test evidence:** `tests/test_environment.py` 7 passed: pin parsing
+  (extras, comments, bare names); the repo leaves torch unpinned; matching
+  pins pass; a runtime mismatch raises and the override records it, while
+  a mismatched non-runtime pin is ignored; compared/recorded split;
+  `run_training` with a mismatched pin raises before creating the
+  checkpoint directory; with the override, the checkpoint, the history,
+  the env file, the printed log and the grid entry and summary all carry
+  it. `tests/test_checkpoint_provenance.py`: a change of torch, CUDA,
+  pennylane or pennylane-lightning refuses a resume; python, package hash
+  and pin-check changes do not. Full suite: 85 passed, 1 skipped.
+  Mutations (never raise; environment not compared; all pins checked;
+  grid summary not printed; pin check compared) each fail ≥ 1 test.
+- **Step 6 notebook (T4) must, before training:** print torch version,
+  `torch.version.cuda` and the full `pip freeze`; run `pip check`;
+  uninstall the unused conflicting packages (diffusers, gradio, jax);
+  never force-reinstall torch. Then pin `torch==<that version>` in
+  `requirements.txt`, which turns on its startup check.
 
 ### D5 — Attack hypotheses do not reliably attack
 - **Category:** D · **Severity:** High · **Status:** open

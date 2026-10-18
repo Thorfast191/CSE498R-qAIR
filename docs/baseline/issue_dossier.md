@@ -1149,6 +1149,12 @@ $A_n = S_n + e^{i\rho}R_n$.
   **Needs supervisor approval?** No.
 
 #### E11 (new) Environment not pinned; resolver conflicts in the v46 run
+- **Status:** **fixed 2026-10-19 except the torch pin** (commit in
+  docs/research_log.md; evidence in issues.md E11). Startup pin check for
+  runtime packages (raises; recorded override), environment in provenance
+  (torch, CUDA, pennylane, lightning compared on resume; the rest
+  recorded), package list per run. The torch pin comes from the Step 6 T4
+  run; until then torch is recorded only.
 - **Category / severity / blocks:** E / Medium / reproducibility on a fresh Colab.
 - **Observation [OBSERVED cells 8, 10]:**
   `diffusers 0.39.0 requires huggingface-hub<2.0,>=0.34.0, but you have huggingface-hub 0.33.4`;
