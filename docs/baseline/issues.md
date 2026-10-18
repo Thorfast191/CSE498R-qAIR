@@ -244,7 +244,7 @@ this repo decides.
   `[1.8829, 1.3686, 1.0157, 0.8861]`, resumed `[1.8829, 1.3686, 0.9016, 0.8123]`.
 
 ### A5 — `input_ablation` can rebuild the wrong architecture
-- **Category:** A · **Severity:** High · **Status:** open
+- **Category:** A · **Severity:** High · **Status:** **fixed** in `7abc115`
 - **Evidence:** `evaluation/input_ablation.py:252-258` falls back to a default
   config, and `:232` defaults `use_llm_prior=True`. Ablation runs never write
   `_config.pt` (it is written only at `training/runner.py:188-206`); `ckpt/` has
@@ -253,6 +253,37 @@ this repo decides.
 - **Proposed fix / verify:** Store the config in every checkpoint and refuse to
   run without it. The "intact" accuracy should equal the logged validation
   accuracy.
+- **Fix (2026-10-19, approved 2026-10-19):** (the config has been in every
+  checkpoint's provenance since A3)
+  1. `resolve_model_config`: a format-2 checkpoint is rebuilt from
+     `provenance["model_config"]`; an explicit `--config` must agree on every
+     architecture key, else `ModelConfigError`. A format-1 (v46) checkpoint
+     needs `--config` or its `{run}_config.pt`; otherwise it raises. The
+     silent full-hybrid default is gone;
+  2. `build_model_from_config` requires every key in `MODEL_CONFIG_KEYS`
+     (model_dim, use_quantum, use_validator, persistent_steps, n_qubits,
+     use_question, phase_mode, phase_source, mixing, use_llm_prior,
+     use_attack); only `backend` is optional (classical-control arms);
+  3. `load_for_ablation`: for a format-2 checkpoint, `--arc-config` defaults
+     to the run's and must not contradict it; on validation, `--max-samples`
+     defaults to the run's `n_val`, and the validation set must match the
+     run's `(n_val, val_hypotheses_sha256)`;
+  4. grid provenance now records `model_dim` (approved); grid checkpoints
+     written before this change (tests only) no longer resume.
+  - No tensor shape changes.
+- **Test evidence:** `tests/test_input_ablation_config.py` 10 passed (real
+  model, CPU, fake 29-question cache, 16 train / 8 val, 2 epochs, seed 42):
+  "intact" equals the checkpoint's logged `best_acc` exactly for `qair`
+  (0.875 = 0.875), `A1_baseline` (0.75 = 0.75) and
+  `A3c_classical_control_persistent` (0.625 = 0.625); these are accuracies on
+  fake data and mean nothing beyond the equality. The old default dict, a
+  format-1 file without config, a contradicting `--config`, 7 instead of 8
+  validation samples, and `--arc-config ARC-Challenge` each raise.
+  `qair_v46_best.pt` builds from `qair_v46_config.pt`, and
+  `A3_persistent_s42_best.pt` from an explicit config. Full suite: 66 passed,
+  1 skipped. Mutations: default fallback restored → 1 failed; contradiction
+  check removed → 1; data check removed → 1; stored config altered
+  (`use_llm_prior` flipped) → 3 (the three equality tests).
 
 ### A6 — Cache edge cases silently change state or data
 - **Category:** A · **Severity:** Medium · **Status:** **fixed** in `0a4f464`
@@ -703,7 +734,7 @@ part of C2.
   `best_val_acc` 0.5).
 
 ### A11 — A resumed run is not RNG-continuous with an uninterrupted one
-- **Category:** E · **Severity:** Medium · **Status:** open (found 2026-10-19 during A4; proposed together with E10)
+- **Category:** E · **Severity:** Medium · **Status:** open (found 2026-10-19 during A4). **Decision 2026-10-19:** fixed together with E10, keeps its own ID; scope: python, numpy, torch CPU/CUDA RNG and the DataLoader generator/epoch, so a resumed run equals an uninterrupted one.
 - **Evidence:** 4-epoch CPU smoke run (fake cache, 16 train / 8 val, seed 42,
   `deterministic=False`, scripted validation), interrupted after epoch 2 and
   resumed: epoch losses uninterrupted `[1.8829, 1.3686, 1.0157, 0.8861]`,

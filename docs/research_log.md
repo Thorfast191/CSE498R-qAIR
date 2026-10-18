@@ -138,3 +138,40 @@ fix commit cannot name itself.
   epoch 2 and resumed `[1.8829, 1.3686, 0.9016, 0.8123]`.
 - **Note:** **Always commit before starting a training run; the code fingerprint ignores untracked .py files.**
 - **Not done:** no ARC-Easy cache, no real training.
+
+---
+
+## 2026-10-19 — Untracked three files committed by mistake
+
+- **What happened:** `git add docs` in the A4 docs commit `2dedcd8` (pushed)
+  also added three untracked local files:
+  `docs/baseline/qAIR_baseline_issues.docx` (28,458 bytes),
+  `docs/prompts/PROMPTS_steps_3_to_11.md` (12,199 bytes),
+  `docs/prompts/PROMPT_issue_dossier.md` (10,991 bytes).
+- **Check:** pattern scan for tokens, API keys, passwords and private keys
+  (`.md` files and the docx's XML): no secrets; the only hits were "tokens"
+  in the NLP sense. `notebooks/qAIR_v46.ipynb` was not among them.
+- **Action (approved option a, no force-push):** `7abc115` untracks them
+  (still on disk) and adds them to `.gitignore`. They remain in the history
+  of `2dedcd8`. Docs commits now stage files by name only.
+
+---
+
+## 2026-10-19 — A5: input_ablation rebuilds the trained architecture or refuses
+
+- **Commit:** `7abc115`.
+- **Change:** config from checkpoint provenance (explicit `--config` must
+  agree); format-1 checkpoints need `--config` or `_config.pt`; no default
+  config and no per-key defaults; validation data must match the run's size
+  and hash; grid provenance gains `model_dim`. Files:
+  `evaluation/input_ablation.py`, `training/ablations.py`,
+  `tests/test_input_ablation_config.py` (new).
+- **Environment:** `qenv` scratch venv as for A3.
+- **Results:** `python -m pytest tests/test_input_ablation_config.py -q` →
+  10 passed in 11.12 s; `python -m pytest tests -q` → 66 passed, 1 skipped in
+  31.64 s. Intact vs logged validation accuracy (fake cache, 8 val, 2 epochs,
+  seed 42, CPU): qair 0.875/0.875, A1_baseline 0.75/0.75,
+  A3c_classical_control_persistent 0.625/0.625. Mutations: default fallback
+  → 1 failed; no contradiction check → 1; no data check → 1; altered stored
+  config → 3.
+- **Not done:** no ARC-Easy cache, no real training.

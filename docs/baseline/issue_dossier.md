@@ -460,6 +460,10 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** none. **Needs supervisor approval?** No.
 
 #### A5 `input_ablation` rebuilds the wrong architecture without a saved config
+- **Status:** **fixed 2026-10-19** in `7abc115` (evidence in
+  issues.md A5). The falsifiable prediction held on CPU smoke checkpoints:
+  "intact" accuracy equals the logged validation accuracy exactly for three
+  arms; altering the stored config breaks the equality.
 - **Category / severity / blocks:** A / High / DoD §2.4.
 - **Observation:** ablation runs write no `_config.pt`; only `qair_v45` and
   `qair_v46` have one [VERIFIED: `ls ckpt`].
@@ -648,7 +652,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** none. **Needs supervisor approval?** No.
 
 #### A11 (new, 2026-10-19) A resumed run is not RNG-continuous
-- **Status:** open; proposed together with E10 (details in issues.md A11).
+- **Status:** open; to be fixed together with E10, own ID (decision 2026-10-19; details in issues.md A11).
 - **Observation:** CPU probe, losses uninterrupted
   `[1.8829, 1.3686, 1.0157, 0.8861]` vs resumed after epoch 2
   `[1.8829, 1.3686, 0.9016, 0.8123]`.
