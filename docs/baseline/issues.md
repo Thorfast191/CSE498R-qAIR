@@ -331,7 +331,7 @@ this repo decides.
   (`config.py:141`).
 
 ### E7 — A capped cache can silently restart hours of LLM generation
-- **Severity:** Medium→High for the cache build · **Status:** **fixed** (commit: see research_log.md) · **Phase 1, item 2**
+- **Severity:** Medium→High for the cache build · **Status:** **fixed** in `6aa20a5` · **Phase 1, item 2**
 - **Evidence:** `training/dataset.py:157-163` (documented in the code) and
   `evaluation/baselines.py:304-309`: calling with `max_samples=None` against a
   capped (`complete=False`) cache resumes generation. Any caller other than

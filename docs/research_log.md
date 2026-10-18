@@ -39,7 +39,7 @@ fix commit cannot name itself.
 
 ## 2026-10-18 — E7: reading a cache never builds one
 
-- **Commit:** see the follow-up entry below.
+- **Commit:** `6aa20a5`.
 - **Change:** `QAIRDataset(..., allow_build=False)`; a read that the stored
   cache cannot satisfy raises with path, state, request and the build command,
   before any lock or model is touched. `scripts/build_cache.py` passes
