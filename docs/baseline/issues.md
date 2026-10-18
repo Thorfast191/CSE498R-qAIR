@@ -244,7 +244,7 @@ this repo decides.
   `[1.8829, 1.3686, 1.0157, 0.8861]`, resumed `[1.8829, 1.3686, 0.9016, 0.8123]`.
 
 ### A5 — `input_ablation` can rebuild the wrong architecture
-- **Category:** A · **Severity:** High · **Status:** **fixed** in `7abc115`
+- **Category:** A · **Severity:** High · **Status:** **fixed** in `b00595a`
 - **Evidence:** `evaluation/input_ablation.py:252-258` falls back to a default
   config, and `:232` defaults `use_llm_prior=True`. Ablation runs never write
   `_config.pt` (it is written only at `training/runner.py:188-206`); `ckpt/` has

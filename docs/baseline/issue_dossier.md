@@ -460,7 +460,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** none. **Needs supervisor approval?** No.
 
 #### A5 `input_ablation` rebuilds the wrong architecture without a saved config
-- **Status:** **fixed 2026-10-19** in `7abc115` (evidence in
+- **Status:** **fixed 2026-10-19** in `b00595a` (evidence in
   issues.md A5). The falsifiable prediction held on CPU smoke checkpoints:
   "intact" accuracy equals the logged validation accuracy exactly for three
   arms; altering the stored config breaks the equality.

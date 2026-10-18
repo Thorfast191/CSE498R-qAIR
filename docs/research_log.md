@@ -159,7 +159,7 @@ fix commit cannot name itself.
 
 ## 2026-10-19 — A5: input_ablation rebuilds the trained architecture or refuses
 
-- **Commit:** `7abc115`.
+- **Commit:** `b00595a` (docs first went in as `9c5f550` naming `7abc115` by mistake; corrected in the next commit).
 - **Change:** config from checkpoint provenance (explicit `--config` must
   agree); format-1 checkpoints need `--config` or `_config.pt`; no default
   config and no per-key defaults; validation data must match the run's size
