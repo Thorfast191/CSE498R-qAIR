@@ -180,7 +180,7 @@ fix commit cannot name itself.
 
 ## 2026-10-19 — E10 + A11: deterministic training; resume restores every RNG stream
 
-- **Commit:** see the follow-up entry below.
+- **Commit:** `bbea237`.
 - **Change:** `config.DETERMINISTIC = True` / `DETERMINISTIC_WARN_ONLY =
   False`; `set_seed(…, deterministic, warn_only)` sets
   `CUBLAS_WORKSPACE_CONFIG` if unset and the torch determinism flags both

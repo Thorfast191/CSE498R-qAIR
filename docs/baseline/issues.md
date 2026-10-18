@@ -626,7 +626,7 @@ as measurement only; D5 in Phase 4; C6/C7 for the supervisor).
 - **Verify:** at n=570 ECE is either clearly above the ≈0.05 noise floor or not.
 
 ### E10 — Training is non-deterministic by default
-- **Category:** E · **Severity:** Medium · **Status:** **fixed on CPU** (commit: see research_log.md); T4 check pending (Step 6)
+- **Category:** E · **Severity:** Medium · **Status:** **fixed on CPU** in `bbea237`; T4 check pending (Step 6)
 - **Evidence:** `[SEED] Set to 42 (deterministic=False)` (cells 10, 39);
   `training/seed.py:8`; no caller passes `deterministic=True` (grep).
 - **Proposed fix:** `deterministic=True` for reported runs; record it in the manifest.
@@ -763,7 +763,7 @@ part of C2.
   `best_val_acc` 0.5).
 
 ### A11 — A resumed run is not RNG-continuous with an uninterrupted one
-- **Category:** E · **Severity:** Medium · **Status:** **fixed** with E10 (commit: see research_log.md) (found 2026-10-19 during A4). **Decision 2026-10-19:** fixed together with E10, keeps its own ID; scope: python, numpy, torch CPU/CUDA RNG and the DataLoader generator/epoch, so a resumed run equals an uninterrupted one.
+- **Category:** E · **Severity:** Medium · **Status:** **fixed** with E10 in `bbea237` (found 2026-10-19 during A4). **Decision 2026-10-19:** fixed together with E10, keeps its own ID; scope: python, numpy, torch CPU/CUDA RNG and the DataLoader generator/epoch, so a resumed run equals an uninterrupted one.
 - **Evidence:** 4-epoch CPU smoke run (fake cache, 16 train / 8 val, seed 42,
   `deterministic=False`, scripted validation), interrupted after epoch 2 and
   resumed: epoch losses uninterrupted `[1.8829, 1.3686, 1.0157, 0.8861]`,
