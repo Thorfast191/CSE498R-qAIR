@@ -531,6 +531,76 @@ pre-stated expectation of no accuracy change.
 
 ---
 
+## Tier 3b — path Hamiltonian: a joint quantum state over all reasoning paths (needs approval)
+
+Full design, mathematics and numerical checks:
+[`docs/baseline/path_hamiltonian_design.md`](path_hamiltonian_design.md)
+(checks: `scripts/verify_path_hamiltonian.py`, 22/22 pass). This tier is not
+the same as item T3b above (the ρ = π/2 init arm); it is a separate readout.
+
+- **Fixes:** the core qAIR idea was never implemented. v46's circuit processes
+  each hypothesis separately (`models/quantum_layer.py:250-254` reshapes to
+  (B·K, D) [VERIFIED]), so no quantum state spans more than one path. This
+  readout also replaces the interference collapse whose limits are C1, C2, C6
+  and C7.
+- **Mechanism.**
+  - One qubit per path (K = 2N = 8 for 4 options); a basis state is a "world"
+    of paths holding or failing.
+  - H = Σ h_i Z_i + Σ J_ij Z_i Z_j − Γ Σ X_i is a 2^K × 2^K matrix, with h from a
+    unary head, J from a symmetric pairwise head (J > 0: paths exclude each
+    other; J < 0: paths agree) and Γ = softplus(γ).
+  - The answer is the probability that option n's support holds and its attack
+    fails, normalized; cross-entropy as in v46.
+  - Classical data enters the state only through h, J and the basis encoding;
+    no extra encoding stage.
+  - The per-hypothesis circuit stays upstream (rule 6).
+- **Arms (single variable Γ).**
+  - **H0:** Γ ≡ 0, the classical Ising Gibbs distribution over worlds.
+  - **H1:** Γ learned, the quantum thermal state.
+  - Both use a learned temperature T. As T → 0 the H1 collapse becomes the
+    ground state.
+  - A ground-state collapse cannot be the H0 control: at Γ = 0 its loss has zero
+    gradient almost everywhere (design check 6). The ground-state version is
+    kept as the secondary arm **H1-GS**.
+  - Base config A3 (prior off). Prior-on variants only if H1 > H0.
+- **Falsifiable prediction (pre-registered in the design, §6).** "Superposition
+  between paths helps" is supported only if all of these hold:
+  - H1 − H0 on test > 0, with the paired CI excluding 0 and H1 ahead in all 3
+    seeds;
+  - Γ stays in use (Γ/(‖J‖_F/K) ≥ 0.05 in all seeds);
+  - the ground state is entangled across supports | attacks (median > 0.01
+    nats).
+
+  It is falsified if Γ collapses in ≥ 2 of 3 seeds, or if an adequately powered
+  test shows no gain. Expected [HYPOTHESIS]: H1 ≥ H0 by < 2 points if the cache
+  passes the gate. Even a positive result is a transverse-field relaxation of a
+  classical model (H is stoquastic), not a quantum advantage.
+- **Single-variable comparison.** H1 vs H0 (primary, α = 0.05). Secondary
+  family with Holm: H1 and H0 vs Tier 0′ A3, H1 vs LLM cloze and letter pick,
+  H1-GS vs H1. All use 3 seeds, full ARC-Easy, and test once.
+- **Prerequisites.** Tier 0, and a Tier 1 cache that passes the gate. h and J are
+  functions of the path embeddings, so by the data-processing inequality they
+  carry no answer information if the hypotheses carry none (D1). The pairwise
+  head needs more signal than a unary one. A no-signal cache would make H1 ≈ H0
+  for reasons unrelated to superposition. Recommended first: T2a (h reads the
+  validator energy) and T2c (the LR group for γ and τ).
+- **T4 cost [ASSUMPTION].** Measured on CPU (Apple M4, numpy): eigh forward
+  takes 47 ms per batch of 16 at K = 8 (256 × 256) and 1.15 s at K = 10
+  (1024 × 1024) [VERIFIED: `scripts/verify_path_hamiltonian.py --bench`]. On a
+  T4 the K = 8 overhead is assumed small against 1–3 s/step; K = 10 (5-option
+  items) may double those batches. Runs: H0, H1, H1-GS × 3 seeds × 8 epochs ≈
+  3–10 h. A CPU torch micro-benchmark comes first (design §8).
+- **Risks.** Near-degenerate ground states (handled in the design, §4.4); J not
+  learning without signal; Γ collapsing to 0 (a pre-registered outcome, not
+  prevented); overfitting the 25,220-parameter heads; over-claiming.
+- **Integration.** New `models/path_hamiltonian.py`; a default-off
+  `readout="path"` flag in `models/full_model.py`; arms in
+  `training/ablations.py`; logging in `training/evaluate.py`. The v46 path is
+  unchanged. That is 4 files, over the 3-file threshold.
+- **Supervisor approval:** **Yes** (new readout; 4 files). *Decision D-12.*
+
+---
+
 ## Tier 4 — bottleneck (C4, C5; all need approval)
 
 ### T4a — C4 encoder options
@@ -610,6 +680,8 @@ Tier 2: T2a (A7) → T2b (budget) → T2c (scalar LR) → T2d (re-measure C6/C7)
           │
 Tier 3: T3a (signed readout) ∥ T3b (π/2 vs π, pre-registered) ∥ T3c (risk–coverage)
           │
+Tier 3b: path Hamiltonian H0 vs H1 (+ H1-GS), pre-registered; needs a gate-passing cache
+          │
 Tier 4: T4a probes → T4a training for options that pass ∥ T4b
 ```
 
@@ -619,7 +691,7 @@ reported, never used to adopt.
 
 **Rough total [ASSUMPTION; replaced by E8 measurements].** Tier 0 ≈ 7–17 h;
 Tier 1 ≈ 6–30 h (dominated by the generator choice); Tier 2 ≈ 10–30 h (30-epoch
-runs dominate); Tier 3 ≈ 3–10 h; Tier 4 ≈ 3–15 h. These are T4 hours over many
+runs dominate); Tier 3 ≈ 3–10 h; Tier 3b ≈ 3–10 h; Tier 4 ≈ 3–15 h. These are T4 hours over many
 Colab sessions; every run over 1 h needs the go-ahead.
 
 ---
@@ -666,6 +738,14 @@ whether cancellation is learned, with the original setting kept for
 comparison. (c) Letting the model abstain on low-confidence questions,
 reported as accuracy against coverage.
 
+**Tier 3b: build the idea qAIR was named for.** The capstone circuit looked at
+each argument on its own. This design gives every argument a qubit, so the
+quantum state covers every combination of arguments being true or false, and
+pairs of arguments can exclude or support each other. We compare it with an
+otherwise identical classical version over the same combinations. What counts
+as success and as failure is fixed in advance (see
+`path_hamiltonian_design.md`).
+
 **Tier 4: widen the bottleneck.** Everything the language model knows reaches
 qAIR through a small frozen sentence encoder. We test better options (a larger
 encoder, extra language-model scores, joint encoding), each first with a cheap
@@ -697,6 +777,7 @@ scoring, we call it additive scoring. Test data is never used to make choices.
 | D-9 | C3/C4/C5: risk–coverage reporting (no approval needed) now; pruning deferred; which encoder options to probe; C5 cleanup | Probe all three C4 options cheaply; train only those that pass; defer pruning |
 | D-10 | Stopping rule: if no Tier 1 cache passes the gate, report D1 as the result instead of continuing architecture work | Agree |
 | D-11 | Confirm the primary success criterion in §3 (arms, test, α, Holm over 2 contrasts) | Confirm before any test-set evaluation |
+| D-12 | **Approve the path Hamiltonian arms (H0/H1)**, plus the secondary H1-GS arm and the 4-file integration (Tier 3b; `path_hamiltonian_design.md` Appendix B) | Approve, to run only after a Tier 1 cache passes the gate |
 
 ---
 
