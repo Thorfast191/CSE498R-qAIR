@@ -178,9 +178,10 @@ def run_training(
 
     model = QAIRvNext(dim=DIM, verbose=True, **model_config).to(device)
 
-    n_params = sum(p.numel() for p in model.parameters())
+    counts = model.parameter_counts()
 
-    print(f"Parameters    : {n_params:,}")
+    print(f"Parameters    : {counts['total']:,} total, "
+          f"{counts['trainable']:,} trainable")
 
     provenance = run_provenance(
         arm=name,
@@ -195,6 +196,7 @@ def run_training(
         val_loader=val_loader,
         device=device,
         pin_check=pin_check,
+        model=model,
     )
 
     print(describe(provenance))

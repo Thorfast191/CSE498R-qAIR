@@ -282,6 +282,7 @@ def run_ablation_suite(
                 val_loader=val_loader,
                 device=device,
                 pin_check=pin_check,
+                model=model,
             )
 
             print(describe(provenance))
@@ -322,6 +323,7 @@ def run_ablation_suite(
                 ),
                 "history": history,
                 "environment": describe(provenance),
+                "parameter_counts": provenance["parameter_counts"],
             }
 
             if test_loader is not None:
@@ -356,7 +358,8 @@ def summarize(results):
     for line in sorted({r["environment"] for runs in results.values() for r in runs}):
         print(line)
     print(f"{'config':<34s} {'val acc':>16s} {'test acc':>16s} "
-          f"{'pw cos':>8s} {'phase':>8s} {'destr':>8s}")
+          f"{'pw cos':>8s} {'phase':>8s} {'destr':>8s} "
+          f"{'params total/trainable':>24s}")
 
     def avg(runs, key):
         vals = [r[key] for r in runs if r.get(key) is not None]
@@ -376,10 +379,13 @@ def summarize(results):
         else:
             test_s = "-"
 
+        counts = runs[0]["parameter_counts"]
+
         print(f"{name:<34s} {val_s:>16s} {test_s:>16s} "
               f"{avg(runs, 'test_pairwise_cos'):>8s} "
               f"{avg(runs, 'test_phase_effect'):>8s} "
-              f"{avg(runs, 'test_destructive'):>8s}")
+              f"{avg(runs, 'test_destructive'):>8s} "
+              f"{counts['total']:>11,}/{counts['trainable']:<11,}")
 
     print(
         "\nA pairwise-cos near 1.0 means that arm's hypotheses collapsed and its "

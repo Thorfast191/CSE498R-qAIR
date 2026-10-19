@@ -311,6 +311,11 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** none. **Needs supervisor approval?** No.
 
 #### A1 `CoherentCollapse.hypothesis_temp` is a dead parameter
+- **Status:** **fixed 2026-10-19** with A2 (commit in docs/research_log.md;
+  evidence in issues.md A2). Option (a), deletion. Checkpoint format 3 with
+  a loader that drops only the known removed keys. Forward pass verified
+  bit-identical against the pre-change code. Same-seed initialization
+  changes only `phase_head` (in the 4 arms that keep it).
 - **Category / severity / blocks:** A / Medium / blocks DoD §2.2 (gradient coverage).
 - **Observation:** drift exactly 0.000000 in all five v46-run checkpoints
   [VERIFIED: checkpoint read]. The v46 optimizer state lacks exactly these 7
@@ -353,6 +358,16 @@ $A_n = S_n + e^{i\rho}R_n$.
   capstone numbers. **Needs supervisor approval?** (a) no; (b) yes (forward pass).
 
 #### A2 Other parameters that never receive gradient
+- **Status:** **fixed 2026-10-19** with A1 (commit in docs/research_log.md;
+  evidence in issues.md A2). `confidence` removed; `phase_head`,
+  `llm_prior_weight`, validator-only weights and `fusion.energy_alpha` built
+  only when used. A documented no-gradient allowance remains:
+  `selector.energy_net.6.bias` (cancelled by per-sample standardization, all
+  arms), the P0/P1 phase path (kept for parameter matching), `quantum.phase_gain`
+  in PS, `polarity_phase` in E0. The prediction "118 → 111 tensors, all with
+  grad" was close but not exact: the main config has 111 tensors, all with a
+  gradient except `selector.energy_net.6.bias`, which receives only rounding
+  noise.
 - **Category / severity / blocks:** A / Low–Medium / DoD §2.2.
 - **Observation:** see A1. Missing optimizer state for `collapse.confidence.*`
   (4 tensors) and `phase_head.*` (2 tensors) in the default config [VERIFIED].
@@ -479,6 +494,7 @@ $A_n = S_n + e^{i\rho}R_n$.
   $\log P_a(n) + \lambda\,z(\ell_n)$ with $\lambda = \mathrm{softplus}(-1) =
   0.313$, a model never trained. Every corruption delta is then measured on the
   wrong function.
+  **Correction (2026-10-19, measured during A1/A2):** arms do *not* all share one parameter set. In v46, A0/A1 had 63 tensors, A2 90, A1b 91, A1c 96, the quantum full-stack arms 118 and A3c 123. The failure mode holds for any two arms with the same set (e.g. A3 vs F0, which differ only in `use_llm_prior`; or A3 vs P0/P1/M0/E0/A4). Since A1/A2 the sets differ more (e.g. `llm_prior_weight` exists only with the prior on), which also lets strict loading catch more mismatches.
 - **Proposed fix:** store the resolved config in every checkpoint (shared with
   A3), and make `input_ablation` raise when it is missing.
 - **Alternatives considered:** infer the config from parameter values. Rejected:

@@ -21,16 +21,25 @@ class EnergyFusion(nn.Module):
       arbitrarily. Both are convex blends now.
     """
 
-    def __init__(self):
+    def __init__(self, use_quantum_energy=True, use_validator_energy=True):
+        """
+        Each blend weight exists only when its energy can arrive (A2): a
+        weight for an absent signal would never receive gradient.
+        """
 
         super().__init__()
 
-        self.energy_alpha = nn.Parameter(torch.tensor(0.0))
+        self.use_quantum_energy = use_quantum_energy
+        self.use_validator_energy = use_validator_energy
+
+        if use_quantum_energy:
+            self.energy_alpha = nn.Parameter(torch.tensor(0.0))
 
         # Learnable validator guidance weight. sigmoid(0.0) = 0.5 at init --
         # moderate influence, model can learn to trust it more or suppress
         # it based on whether the validator's signal actually helps.
-        self.validator_alpha = nn.Parameter(torch.tensor(0.0))
+        if use_validator_energy:
+            self.validator_alpha = nn.Parameter(torch.tensor(0.0))
 
     def forward(
         self,
@@ -54,6 +63,20 @@ class EnergyFusion(nn.Module):
 
         # Soft-min over options: -tau * logsumexp(-e / tau).
         collapse_energy = -tau * torch.logsumexp(-e / tau, dim=-1)
+
+        if (quantum_energy is not None) != self.use_quantum_energy:
+            raise ValueError(
+                f"EnergyFusion built with use_quantum_energy="
+                f"{self.use_quantum_energy} but quantum_energy is "
+                f"{'absent' if quantum_energy is None else 'present'}"
+            )
+
+        if (validator_energy is not None) != self.use_validator_energy:
+            raise ValueError(
+                f"EnergyFusion built with use_validator_energy="
+                f"{self.use_validator_energy} but validator_energy is "
+                f"{'absent' if validator_energy is None else 'present'}"
+            )
 
         if quantum_energy is not None:
 

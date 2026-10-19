@@ -158,7 +158,10 @@ def write_package_list(path):
 
 
 def describe(provenance):
-    """One line for every printed result: versions and the pin-check state."""
+    """
+    One line for every printed result: versions, the pin-check state and
+    the total / trainable parameter counts (A2).
+    """
 
     env = provenance["environment"]
     pin_check = provenance["pin_check"]
@@ -170,7 +173,10 @@ def describe(provenance):
         else "pins ok"
     )
 
+    counts = provenance["parameter_counts"]
+
     return (
         f"[ENV] torch {env['torch']} cuda {env['cuda']} "
         f"pennylane {env['pennylane']} lightning {env['pennylane-lightning']} | {pins}"
+        f" | params total {counts['total']:,} trainable {counts['trainable']:,}"
     )

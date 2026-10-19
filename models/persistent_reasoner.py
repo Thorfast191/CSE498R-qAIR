@@ -75,7 +75,8 @@ class PersistentReasoner(nn.Module):
       directly accelerated the collapse.
     """
 
-    def __init__(self, dim, steps=3, keep_trajectory=False, mixing="orthogonal"):
+    def __init__(self, dim, steps=3, keep_trajectory=False, mixing="orthogonal",
+                 use_potential=True):
 
         super().__init__()
 
@@ -146,7 +147,11 @@ class PersistentReasoner(nn.Module):
         # Validator influence (logit; sigmoid -> 0.30)
         ####################################################
 
-        self.validator_weight = nn.Parameter(torch.tensor(-0.8473))
+        # Only when a validator potential can be passed in (A2).
+        self.use_potential = use_potential
+
+        if use_potential:
+            self.validator_weight = nn.Parameter(torch.tensor(-0.8473))
 
         ####################################################
         # Persistent memory (logit; sigmoid -> 0.80)
@@ -279,6 +284,12 @@ class PersistentReasoner(nn.Module):
             ################################################
 
             if potential is not None:
+
+                if not self.use_potential:
+                    raise ValueError(
+                        "PersistentReasoner built with use_potential=False "
+                        "was given a validator potential"
+                    )
 
                 weight = torch.sigmoid(self.validator_weight)
 

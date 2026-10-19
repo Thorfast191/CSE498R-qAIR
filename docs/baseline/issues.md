@@ -104,7 +104,7 @@ this repo decides.
   train from local `main`.
 
 ### A1 — `CoherentCollapse.hypothesis_temp` is a dead parameter
-- **Category:** A · **Severity:** Medium · **Status:** open
+- **Category:** A · **Severity:** Medium · **Status:** **fixed** with A2 (commit: see research_log.md)
 - **Evidence:** `models/full_model.py:405` always passes
   `hyp_temperature=collapse_out["temperature"]`, so `models/interference.py:141`
   (the only read of `hypothesis_temp`, defined at `:104`) never runs. Drift after
@@ -118,7 +118,7 @@ this repo decides.
   `grad is None`/zero parameter.
 
 ### A2 — Other parameters that never receive gradient
-- **Category:** A · **Severity:** Low–Medium · **Status:** open
+- **Category:** A · **Severity:** Low–Medium · **Status:** **fixed** with A1 (commit: see research_log.md); fix and evidence below
 - **Evidence:** `models/collapse.py:55-60,85`: the `confidence` head is only
   returned (`models/full_model.py:470`) and never used in `training/losses.py`.
   `models/full_model.py:203,384-387`: `phase_head` is unused when
@@ -126,6 +126,92 @@ this repo decides.
   `llm_prior_weight` is unused when `use_llm_prior=False` (expected in the
   ablation arms).
 - **Proposed fix / verify:** As for A1. Record trainable-parameter counts per arm.
+- **Measured before the fix (2026-10-19, scratch probe, one forward/backward
+  per arm on a fake batch):** besides the dossier's 7 tensors (675 params in
+  the main config), arm-specific dead parameters: `llm_prior_weight` (prior
+  off), `reasoner.validator_weight` and `fusion.validator_alpha` (validator
+  off), `fusion.energy_alpha` (no bottleneck: A0, A1), and in P0/P1 the phase
+  path (`polarity_phase`, `quantum.phase_gain`, `selector.phase_net.*`); in
+  PS `quantum.phase_gain`; in E0 `polarity_phase` gets an exactly zero
+  gradient.
+- **Diagnosis of `selector.energy_net.6.bias` (zero gradient in A1b):** the
+  output bias of the learned energy is a constant added to every
+  (hypothesis, option) pair; `_masked_standardize`
+  (`models/answer_selector.py:16-32`) subtracts the per-sample mean, so it
+  cancels exactly in **every** arm. Measured: gradient 7e-9 to 9e-8 against
+  max |weight gradient| 0.31 to 1.44; shifting the bias by +5 changes the
+  scores by at most 4.3e-6 (float precision). The exact 0.0 in A1b was a
+  rounding coincidence. AdamW normalizes these noise gradients to full-size
+  steps, so the bias random-walks during training without changing the
+  output.
+- **Fix (2026-10-19, decisions approved 2026-10-19), A1 and A2 together:**
+  1. removed `interference.hypothesis_temp` and its unreachable branch
+     (`hyp_temperature` is now a required keyword argument), and the
+     `collapse.confidence` head with its `collapse_confidence` output (no
+     consumer);
+  2. built only when used: `phase_head` (`phase_source="learned"` or no
+     bottleneck; `use_phase_head`), `llm_prior_weight` (`use_llm_prior`),
+     `reasoner.validator_weight` (validator feedback), `fusion.validator_alpha`
+     (validator), `fusion.energy_alpha` (bottleneck). `EnergyFusion` and
+     `PersistentReasoner` raise if given a signal they were built without;
+     the verbose prints in `training/train.py` skip absent scalars;
+  3. **documented no-gradient allowance** (`QAIRvNext.no_gradient_parameters`,
+     name → reason): `selector.energy_net.6.bias` in every arm (diagnosis
+     above); P0/P1 phase path, kept for parameter matching (decision
+     2026-10-19); `quantum.phase_gain` in PS; `polarity_phase` in E0. The
+     last two were not in the approved removal list, so they are in the
+     allowance, not removed;
+  4. `parameter_counts()` (total; trainable = total − allowance) in the
+     provenance (informational) and in the environment line printed with
+     every result, plus a column in the grid summary;
+  5. **checkpoint format 3**; `load_model_state` drops, from format-1/2
+     checkpoints only, exactly the keys in `REMOVED_PARAMETER_KEYS` that the
+     model does not have, prints them, and loads strictly; only format 3 is
+     resumed. Used by `load_or_resume`, `load_best`, `input_ablation` and
+     `sample_inference`.
+  - No tensor shapes change; the forward pass is unchanged (below).
+- **Per-arm parameter counts after the fix** (`QAIRvNext.parameter_counts`):
+
+  | arm | tensors | total | trainable | no-gradient allowance |
+  |---|---|---|---|---|
+  | A0_no_question | 54 | 481,808 | 481,807 | energy_net.6.bias |
+  | A1_baseline | 54 | 629,648 | 629,647 | energy_net.6.bias |
+  | A1b_quantum_only | 81 | 757,326 | 757,325 | energy_net.6.bias |
+  | A1c_classical_control_only | 86 | 758,082 | 758,081 | energy_net.6.bias |
+  | A2_validator | 83 | 928,028 | 928,027 | energy_net.6.bias |
+  | A3_persistent, A4, M0 | 110 | 1,055,706 | 1,055,705 | energy_net.6.bias |
+  | A3c_classical_control_persistent | 115 | 1,056,462 | 1,056,461 | energy_net.6.bias |
+  | P0_classical_collapse, P1_phase_zero | 110 | 1,055,706 | 1,054,803 | energy_net.6.bias, polarity_phase, quantum.phase_gain, selector.phase_net.{weight,bias} |
+  | PS_learned_phase_head | 112 | 1,055,835 | 1,055,833 | energy_net.6.bias, quantum.phase_gain |
+  | E0_support_only | 110 | 1,055,706 | 1,055,704 | energy_net.6.bias, polarity_phase |
+  | F0_full_with_llm_prior (= `--mode train` config) | 111 | 1,055,707 | 1,055,706 | energy_net.6.bias |
+
+  (`energy_net.6.bias` = `selector.energy_net.6.bias`; the main config was
+  1,056,382 parameters in v46, 675 more, as the dossier predicted.)
+- **Initialization order (measured, `tests/test_forward_unchanged.py`):** the
+  removed `confidence` head drew random numbers during construction, so a
+  module built after it initializes differently for the same seed. Only
+  `phase_head` is built after it: its initial weights change in the 4 arms
+  that still have it (A0, A1, A2, PS); every other initial weight of every
+  arm is bit-identical to the pre-change code (`35243a1`) for seed 0.
+  Consequence: same-seed runs of the new code do not reproduce old v46 runs
+  in those arms; v46 runs were not reproducible anyway
+  (`deterministic=False`, E10).
+- **Test evidence:**
+  - `tests/test_gradient_coverage.py` (14 arms × 3 tests + 1): every parameter
+    outside the allowance has a non-None, non-zero gradient; every allowed
+    parameter is None/zero or below 1e-5 × the largest gradient; removed
+    parameters exist only where used; counts add up; shifting the energy bias
+    leaves scores unchanged (< 1e-4).
+  - `tests/test_forward_unchanged.py`: the pre-change tree (`git archive
+    35243a1`) and this code, given the same weights, give **bit-identical**
+    scores for all 14 arms on a synthetic batch (one padded option), and for
+    `qair_v46_best.pt` (7 keys dropped, logged); the key-drop loader drops only
+    known keys and only from old formats; a format-2 checkpoint is not resumed.
+  - Full suite: 159 passed, 1 skipped. Mutations (`phase_head` always built →
+    19 failed; `llm_prior_weight` always built → 26; allowance too wide → 14;
+    loader drops any key → 1; forward changed in the `phase_head` path → 4;
+    format check removed → 1).
 
 ### A3 — Single-run name lacks the seed; resume ignores the config
 - **Category:** A · **Severity:** High · **Status:** **fixed** in `f605c55`
@@ -250,6 +336,7 @@ this repo decides.
   `_config.pt` (it is written only at `training/runner.py:188-206`); `ckpt/` has
   config files only for `qair_v45` and `qair_v46`. All arms share one parameter
   set, so `load_state_dict` succeeds silently.
+  **Correction (2026-10-19, measured during A1/A2):** arms do *not* all share one parameter set. In v46, A0/A1 had 63 tensors, A2 90, A1b 91, A1c 96, the quantum full-stack arms 118 and A3c 123. The failure mode holds for any two arms with the same set (e.g. A3 vs F0, which differ only in `use_llm_prior`; or A3 vs P0/P1/M0/E0/A4). Since A1/A2 the sets differ more (e.g. `llm_prior_weight` exists only with the prior on), which also lets strict loading catch more mismatches.
 - **Proposed fix / verify:** Store the config in every checkpoint and refuse to
   run without it. The "intact" accuracy should equal the logged validation
   accuracy.

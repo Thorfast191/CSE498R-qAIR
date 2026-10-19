@@ -5,7 +5,7 @@ from config import EMBEDDING_DIM, MODEL_DIM, N_QUBITS, GEN_MODES
 from models.generator import HypothesisGenerator
 from models.encoder import HypothesisEncoder
 from models.full_model import QAIRvNext
-from training.checkpoint import load_checkpoint_file
+from training.checkpoint import load_checkpoint_file, load_model_state
 
 TEST_SAMPLES = [
     {
@@ -136,7 +136,7 @@ def load_ablation_model(ckpt_dir, name, cfg, device, n_qubits=N_QUBITS):
 
     ckpt = load_checkpoint_file(ckpt_path)
 
-    model.load_state_dict(ckpt["model"])
+    load_model_state(model, ckpt, ckpt_path)
 
     model = model.to(device)
     model.eval()

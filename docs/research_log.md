@@ -227,3 +227,31 @@ fix commit cannot name itself.
 - **Pending (Step 6):** T4 torch/CUDA/pip freeze, `pip check`, uninstall
   diffusers/gradio/jax, then pin torch.
 - **Not done:** no ARC-Easy cache, no real training.
+
+---
+
+## 2026-10-19 — A1 + A2: parameters that never receive gradient
+
+- **Commit:** see the follow-up entry below.
+- **Diagnosis first (scratch probes outside the repo):** dead parameters per
+  arm (one forward/backward on a fake batch); `selector.energy_net.6.bias`
+  gradient 7e-9..9e-8 vs weights 0.31..1.44, +5 shift changes scores
+  ≤ 4.3e-6: cancelled by `_masked_standardize` in every arm.
+- **Change:** removed `hypothesis_temp` and the `confidence` head; built
+  `phase_head`, `llm_prior_weight`, validator-only weights and
+  `fusion.energy_alpha` only when used; `no_gradient_parameters()` allowance;
+  `parameter_counts()` in provenance and printed results; checkpoint format 3
+  with `load_model_state`. Files: `models/collapse.py`, `models/interference.py`,
+  `models/energy_fusion.py`, `models/persistent_reasoner.py`,
+  `models/full_model.py`, `training/checkpoint.py`, `training/train.py`,
+  `training/runner.py`, `training/ablations.py`, `training/environment.py`,
+  `evaluation/input_ablation.py`, `evaluation/sample_inference.py`,
+  `tests/test_gradient_coverage.py` (new), `tests/test_forward_unchanged.py`
+  (new), `tests/test_checkpoint_provenance.py`, `tests/test_input_ablation_config.py`.
+- **Environment:** `qenv` scratch venv as for A3.
+- **Results:** `python -m pytest tests/test_gradient_coverage.py
+  tests/test_forward_unchanged.py -q` → 74 passed; `python -m pytest tests -q`
+  → 159 passed, 1 skipped in 82.63 s. Bit-identical scores vs `35243a1` for
+  14 arms and `qair_v46_best.pt`. Init change for seed 0 only in `phase_head`
+  of A0, A1, A2, PS. Six mutations each fail ≥ 1 test.
+- **Not done:** no ARC-Easy cache, no real training.

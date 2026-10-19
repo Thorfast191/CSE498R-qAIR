@@ -104,7 +104,7 @@ def test_checkpoint_round_trips_under_weights_only(tmp_path):
 
     ckpt = load_checkpoint_file(latest(tmp_path))
 
-    assert ckpt["format"] == CHECKPOINT_FORMAT == 2
+    assert ckpt["format"] == CHECKPOINT_FORMAT == 3
     assert ckpt["provenance"] == prov
 
 

@@ -98,10 +98,11 @@ class CoherentCollapse(nn.Module):
 
         self.phase_mode = phase_mode
 
-        # Two temperatures, one per axis. Stored as logits into
-        # 0.3 + softplus(.) so they stay strictly positive without a
-        # clamp, and start near 1.0.
-        self.hypothesis_temp = nn.Parameter(torch.tensor(0.5413))
+        # Option-axis temperature, stored as a logit into 0.3 + softplus(.)
+        # so it stays strictly positive without a clamp and starts near
+        # 1.0. The hypothesis-axis temperature is always the per-sample
+        # one from models/collapse.py; a global `hypothesis_temp` that
+        # this replaced was unreachable and was removed in A1.
         self.option_temp = nn.Parameter(torch.tensor(0.5413))
 
     def forward(
@@ -112,7 +113,8 @@ class CoherentCollapse(nn.Module):
         phase_kn=None,
         H_mask=None,
         O_mask=None,
-        hyp_temperature=None,
+        *,
+        hyp_temperature,
     ):
         """
         collapse_energy : (B, K)     fused per-hypothesis energy
@@ -121,8 +123,8 @@ class CoherentCollapse(nn.Module):
         phase_kn        : (B, K, N)  compatibility phases, radians
         H_mask          : (B, K) bool
         O_mask          : (B, N) bool
-        hyp_temperature : (B, 1) optional per-sample temperature from
-                          models/collapse.py, overriding the global one
+        hyp_temperature : (B, 1) per-sample temperature from
+                          models/collapse.py
 
         Returns log-probabilities over options. They are already
         normalized, so F.cross_entropy(log_probs, y) is exact:
@@ -135,12 +137,7 @@ class CoherentCollapse(nn.Module):
         # Hypothesis amplitudes  r_k,  normalized so sum_k r_k^2 = 1
         # ------------------------------------------------------------
 
-        if hyp_temperature is not None:
-            t_hyp = hyp_temperature
-        else:
-            t_hyp = 0.3 + F.softplus(self.hypothesis_temp)
-
-        log_r = -collapse_energy / (2.0 * t_hyp)
+        log_r = -collapse_energy / (2.0 * hyp_temperature)
 
         if H_mask is not None:
             log_r = log_r.masked_fill(~H_mask, float("-inf"))
@@ -333,8 +330,6 @@ class CoherentCollapse(nn.Module):
             "coherent_contrast": coherent_contrast,
             "classical_contrast": classical_contrast,
             "answer_entropy": entropy.mean(),
-            "hypothesis_temperature": (
-                t_hyp.detach().mean() if torch.is_tensor(t_hyp) else t_hyp
-            ),
+            "hypothesis_temperature": hyp_temperature.detach().mean(),
             "option_temperature": t_opt.detach(),
         }

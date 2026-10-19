@@ -44,7 +44,7 @@ from config import (
     ARC_CONFIG,
     resolve_device,
 )
-from training.checkpoint import load_checkpoint_file
+from training.checkpoint import load_checkpoint_file, load_model_state
 from training.dataset import QAIRDataset, collate_fn
 from training.evaluate import batch_to_model
 from training.seed import set_seed
@@ -312,7 +312,7 @@ def load_for_ablation(ckpt_path, config_path, split, cache_dir, arc_config,
     model = build_model_from_config(
         resolve_model_config(ckpt, ckpt_path, config_path), device,
     )
-    model.load_state_dict(ckpt["model"])
+    load_model_state(model, ckpt, ckpt_path)
 
     provenance = ckpt.get("provenance")
 

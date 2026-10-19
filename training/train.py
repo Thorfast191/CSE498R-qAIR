@@ -282,13 +282,21 @@ class Trainer:
                   f"((max-min)/mean over options; rises under cancellation)")
 
             if self.verbose and hasattr(self.model, "fusion"):
-                print(
-                    f"energy_alpha={torch.sigmoid(self.model.fusion.energy_alpha).item():.4f} "
-                    f"validator_alpha={torch.sigmoid(self.model.fusion.validator_alpha).item():.4f} "
-                    f"dt={torch.sigmoid(self.model.reasoner.dt).item():.4f} "
-                    f"anchor={torch.sigmoid(self.model.reasoner.anchor_weight).item():.4f} "
-                    f"llm_prior={torch.nn.functional.softplus(self.model.llm_prior_weight).item():.4f}"
+                # Blend weights exist only in the arms that use them (A2).
+                scalars = {
+                    "energy_alpha": getattr(self.model.fusion, "energy_alpha", None),
+                    "validator_alpha": getattr(self.model.fusion, "validator_alpha", None),
+                    "dt": self.model.reasoner.dt,
+                    "anchor": self.model.reasoner.anchor_weight,
+                }
+                line = " ".join(
+                    f"{k}={torch.sigmoid(v).item():.4f}"
+                    for k, v in scalars.items() if v is not None
                 )
+                if getattr(self.model, "use_llm_prior", False):
+                    prior = torch.nn.functional.softplus(self.model.llm_prior_weight)
+                    line += f" llm_prior={prior.item():.4f}"
+                print(line)
 
             # destructive_fraction is a step function of this one scalar,
             # so logging the effect without the cause -- as the v45.1 run

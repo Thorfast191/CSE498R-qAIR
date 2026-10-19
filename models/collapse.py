@@ -50,14 +50,11 @@ class CollapseController(nn.Module):
             nn.GELU(),
         )
 
+        # A `confidence` head (32 -> 16 -> 1) used to sit here. Its output
+        # was returned but read by no loss, so it never received gradient;
+        # removed in A1/A2. training/checkpoint.py drops its keys from
+        # older checkpoints.
         self.temperature = nn.Linear(32, 1)
-
-        self.confidence = nn.Sequential(
-            nn.Linear(32, 16),
-            nn.GELU(),
-            nn.Linear(16, 1),
-            nn.Sigmoid(),
-        )
 
     def forward(self, energy, mask=None):
         """
@@ -74,15 +71,13 @@ class CollapseController(nn.Module):
 
         if mask is not None:
             # Don't let padded hypotheses shift the pooled statistics the
-            # temperature and confidence heads read.
+            # temperature head reads.
             m = mask.unsqueeze(-1).to(z.dtype)
             z_global = (z * m).sum(dim=1) / m.sum(dim=1).clamp(min=1.0)
         else:
             z_global = z.mean(dim=1)
 
         temperature = 0.3 + F.softplus(self.temperature(z_global))
-
-        confidence = self.confidence(z_global).squeeze(-1)
 
         # ------------------------------------------------------------
         # Diagnostics (NOT loss terms -- see class docstring)
@@ -105,7 +100,6 @@ class CollapseController(nn.Module):
 
         return {
             "temperature": temperature,
-            "confidence": confidence,
             "raw_energy": raw_energy,
             "diversity": diversity.mean(),
             "spread": spread.mean(),

@@ -175,7 +175,7 @@ class QAIRvNext(nn.Module):
 
         self.reasoner = PersistentReasoner(
             d, steps=persistent_steps, keep_trajectory=keep_trajectory,
-            mixing=mixing,
+            mixing=mixing, use_potential=self.validator_feedback,
         )
 
         if backend == "quantum":
@@ -191,7 +191,10 @@ class QAIRvNext(nn.Module):
 
         self.selector = EnergyAnswerSelector(d, use_question=use_question)
 
-        self.fusion = EnergyFusion()
+        self.fusion = EnergyFusion(
+            use_quantum_energy=self.use_quantum,
+            use_validator_energy=use_validator,
+        )
 
         self.collapse = CollapseController()
 
@@ -199,8 +202,13 @@ class QAIRvNext(nn.Module):
 
         # Classical fallback phase head, used when phase_source ==
         # "learned" or when there is no bottleneck layer to read a phase
-        # off. One linear map to one bounded scalar per hypothesis.
-        self.phase_head = nn.Linear(d, 1)
+        # off. One linear map to one bounded scalar per hypothesis. Built
+        # only then (A2): with a bottleneck and phase_source="circuit" it
+        # never received gradient.
+        self.use_phase_head = phase_source == "learned" or not self.use_quantum
+
+        if self.use_phase_head:
+            self.phase_head = nn.Linear(d, 1)
 
         # Relative phase between the two evidence directions, initialized
         # to pi.
@@ -228,8 +236,59 @@ class QAIRvNext(nn.Module):
         # Weight on the cached LLM log-prior. softplus keeps it
         # non-negative (a prior the model can trust or ignore, but never
         # invert); softplus(-1.0) = 0.313 at init -- present, not
-        # dominant.
-        self.llm_prior_weight = nn.Parameter(torch.tensor(-1.0))
+        # dominant. Built only when the prior is used (A2).
+        if use_llm_prior:
+            self.llm_prior_weight = nn.Parameter(torch.tensor(-1.0))
+
+    def no_gradient_parameters(self):
+        """
+        Parameters that, by construction, receive no gradient (or only
+        float rounding noise) in this configuration: the documented
+        allowance of A1/A2. Every other parameter must receive one
+        (tests/test_gradient_coverage.py). {name: reason}.
+        """
+
+        allowance = {
+            # A constant added to every (hypothesis, option) energy; the
+            # selector's per-sample standardization subtracts it exactly.
+            "selector.energy_net.6.bias":
+                "cancelled by _masked_standardize (per-sample constant)",
+        }
+
+        if self.phase_mode in ("classical", "zero"):
+            # P0 / P1 keep the phase path so they stay parameter-matched
+            # with A3 (decision 2026-10-19); their phases are not used.
+            allowance.update({
+                "polarity_phase": f"phase_mode={self.phase_mode!r} ignores phases",
+                "selector.phase_net.weight": f"phase_mode={self.phase_mode!r} ignores phases",
+                "selector.phase_net.bias": f"phase_mode={self.phase_mode!r} ignores phases",
+            })
+            if self.use_quantum:
+                allowance["quantum.phase_gain"] = (
+                    f"phase_mode={self.phase_mode!r} ignores phases"
+                )
+
+        if self.use_quantum and self.phase_source == "learned":
+            allowance["quantum.phase_gain"] = (
+                "phase_source='learned' replaces the bottleneck's phase"
+            )
+
+        if not self.use_attack:
+            allowance["polarity_phase"] = (
+                "use_attack=False: no attack hypotheses carry the relative phase"
+            )
+
+        return allowance
+
+    def parameter_counts(self):
+        """total: every parameter; trainable: minus the no-gradient allowance."""
+
+        allowance = self.no_gradient_parameters()
+
+        total = sum(p.numel() for p in self.parameters())
+        idle = sum(p.numel() for n, p in self.named_parameters() if n in allowance)
+
+        return {"total": total, "trainable": total - idle}
 
     def _run_quantum(self, H):
 
@@ -381,10 +440,10 @@ class QAIRvNext(nn.Module):
         # Hypothesis phase
         # ------------------------------------------------------------
 
-        if self.phase_source == "circuit" and quantum_phase is not None:
-            phase_h = quantum_phase
-        else:
+        if self.use_phase_head:
             phase_h = bounded_phase(self.phase_head(H).squeeze(-1))
+        else:
+            phase_h = quantum_phase
 
         # +0 for support (polarity +1), +polarity_phase for attack (-1).
         phase_h = phase_h + 0.5 * (1.0 - polarity) * self.polarity_phase
@@ -462,12 +521,14 @@ class QAIRvNext(nn.Module):
             "classical_weights": coherent["classical"],
             "coherent_weights": coherent["coherent"],
             "llm_prior": llm_term,
-            "llm_prior_weight": F.softplus(self.llm_prior_weight).detach(),
+            "llm_prior_weight": (
+                F.softplus(self.llm_prior_weight).detach()
+                if self.use_llm_prior else None
+            ),
             "entropy": entropy,
             "diversity": collapse_out["diversity"],
             "spread": collapse_out["spread"],
             "peak": collapse_probs.max(dim=1).values.mean(),
-            "collapse_confidence": collapse_out["confidence"],
             "validator_potential": potential,
             "trajectory": trajectory,
             "attention": interaction,

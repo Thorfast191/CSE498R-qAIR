@@ -13,9 +13,27 @@ from training.seed import restore_rng_state
 
 
 # Format 1 (v46 and earlier): epoch, best_acc, model, optimizer, scheduler,
-# scaler. Format 2 adds "format" and "provenance". Format-1 files still load
-# for evaluation; they are never resumed.
-CHECKPOINT_FORMAT = 2
+# scaler. Format 2 adds "format" and "provenance". Format 3 (A1/A2) removes
+# the parameters that never received gradient. Format-1 and -2 files still
+# load for evaluation (load_model_state drops exactly REMOVED_PARAMETER_KEYS);
+# only format 3 is resumed.
+CHECKPOINT_FORMAT = 3
+
+# Removed in format 3, or built only by the arms that use them. Dropped from
+# an older checkpoint only when the model being loaded does not have them.
+REMOVED_PARAMETER_KEYS = (
+    "interference.hypothesis_temp",
+    "collapse.confidence.0.weight",
+    "collapse.confidence.0.bias",
+    "collapse.confidence.2.weight",
+    "collapse.confidence.2.bias",
+    "phase_head.weight",
+    "phase_head.bias",
+    "llm_prior_weight",
+    "reasoner.validator_weight",
+    "fusion.energy_alpha",
+    "fusion.validator_alpha",
+)
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -29,7 +47,7 @@ CODE_PATHSPECS = ("*.py", "requirements.txt")
 # computation (E11).
 INFORMATIONAL_KEYS = (
     "git_commit", "device", "cublas_workspace_config", "environment_info",
-    "pin_check",
+    "pin_check", "parameter_counts",
 )
 
 
@@ -46,6 +64,28 @@ def load_checkpoint_file(path, map_location="cpu"):
     """
 
     return torch.load(path, map_location=map_location, weights_only=True)
+
+
+def load_model_state(model, ckpt, source):
+    """
+    load_state_dict(strict=True) after dropping, from a format-1/2
+    checkpoint only, the REMOVED_PARAMETER_KEYS this model does not have.
+    Each dropped key is printed; any other difference still raises.
+    """
+
+    state = ckpt["model"]
+
+    if ckpt.get("format", 1) < 3:
+
+        expected = set(model.state_dict())
+        dropped = [k for k in state if k in REMOVED_PARAMETER_KEYS and k not in expected]
+
+        if dropped:
+            print(f"[CHECKPOINT] {source} (format {ckpt.get('format', 1)}): "
+                  f"dropped removed parameters {dropped}")
+            state = {k: v for k, v in state.items() if k not in dropped}
+
+    model.load_state_dict(state)
 
 
 def run_key(arm, arc_config, seed):
@@ -120,7 +160,8 @@ def training_config(epochs, patience, weight_decay, train_samples, val_samples,
 
 
 def run_provenance(arm, arc_config, seed, model_config, train_config,
-                   train_loader, val_loader, device, pin_check, repo_root=None):
+                   train_loader, val_loader, device, pin_check, model,
+                   repo_root=None):
     """
     Everything that must match for a checkpoint to be resumed, plus a few
     informational fields. Normalized through JSON so it holds only plain
@@ -146,6 +187,7 @@ def run_provenance(arm, arc_config, seed, model_config, train_config,
         "environment": environment,
         "environment_info": environment_info,
         "pin_check": pin_check,
+        "parameter_counts": model.parameter_counts(),
         "device": str(device),
         "cublas_workspace_config": os.environ.get("CUBLAS_WORKSPACE_CONFIG"),
     }
@@ -244,6 +286,13 @@ def load_or_resume(trainer, ckpt_dir, name, epochs, provenance):
 
     check_provenance(latest_ckpt, ckpt, provenance)
 
+    if ckpt.get("format") != CHECKPOINT_FORMAT:
+        raise CheckpointMismatchError(
+            f"{latest_ckpt} is checkpoint format {ckpt.get('format')}; only "
+            f"format {CHECKPOINT_FORMAT} can be resumed (the parameter set "
+            f"changed in A1/A2)."
+        )
+
     missing = [k for k in RESUME_STATE_KEYS if k not in ckpt]
 
     if missing:
@@ -254,7 +303,7 @@ def load_or_resume(trainer, ckpt_dir, name, epochs, provenance):
 
     print(f"\n[RESUME {name}]")
 
-    trainer.model.load_state_dict(ckpt["model"])
+    load_model_state(trainer.model, ckpt, latest_ckpt)
     trainer.optim.load_state_dict(ckpt["optimizer"])
 
     trainer.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -300,6 +349,6 @@ def load_best(model, ckpt_dir, name, provenance, device):
 
     check_provenance(best_path, ckpt, provenance)
 
-    model.load_state_dict(ckpt["model"])
+    load_model_state(model, ckpt, best_path)
 
     return True

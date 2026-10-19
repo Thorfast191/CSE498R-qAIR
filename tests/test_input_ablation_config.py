@@ -16,7 +16,7 @@ import torch
 from config import MODEL_DIM, N_QUBITS
 from tests.test_cache_determinism import ARC
 from tests.test_checkpoint_provenance import REPO_ROOT, smoke_cache  # noqa: F401
-from training.checkpoint import load_checkpoint_file, run_key
+from training.checkpoint import load_checkpoint_file, load_model_state, run_key
 
 
 def best(ckpt_dir, run):
@@ -145,7 +145,7 @@ def test_v46_main_checkpoint_builds_from_its_config_file():
     cfg = resolve_model_config(ckpt, path)
 
     assert cfg == load_checkpoint_file(v46_file("qair_v46_config.pt"))
-    build_model_from_config(cfg, "cpu").load_state_dict(ckpt["model"])
+    load_model_state(build_model_from_config(cfg, "cpu"), ckpt, path)
 
 
 def test_v46_grid_checkpoint_builds_from_explicit_config(tmp_path):
@@ -162,4 +162,4 @@ def test_v46_grid_checkpoint_builds_from_explicit_config(tmp_path):
     cfg = resolve_model_config(ckpt, path, str(config_path))
 
     assert cfg["use_llm_prior"] is False
-    build_model_from_config(cfg, "cpu").load_state_dict(ckpt["model"])
+    load_model_state(build_model_from_config(cfg, "cpu"), ckpt, path)
