@@ -40,13 +40,14 @@ becomes the code default, and the v46 baseline row stays in every table.
 | PD-7 | Tier 0 epoch count | At most 20 epochs, early stopping patience 5 | D-2 |
 | PD-8 | Which arm is "qAIR" | Primary F0 (full pipeline with LLM prior, the capstone's reported configuration); secondary A3 (no LLM prior) | D-3 |
 | PD-9 | `amp_entropy` | Logged as a diagnostic only | D-5 (`amp_entropy` part) |
-| PD-10 | Stopping rule for training | Early stopping on validation accuracy, patience 5, at most 20 epochs; pre-registered, never chosen after seeing results | D-10 (see note) |
-| PD-11 | Primary success criterion | Primary qAIR arm beats both direct LLM baselines on full ARC-Easy test, 3 seeds, paired bootstrap with Holm correction, p < 0.05; v46 baseline reported alongside | D-11 |
+| PD-10 | Stopping rule for training | Early stopping on validation accuracy, patience 5, at most 20 epochs; pre-registered, never chosen after seeing results | D-10 (training part) |
+| PD-11 | Primary success criterion | Primary qAIR arm beats both direct LLM baselines on full ARC-Easy test, 3 seeds, paired bootstrap with Holm correction, p < 0.05; the win has the same direction in all 3 seeds; per-seed exact McNemar p-values reported; v46 baseline reported alongside | D-11 |
 | PD-12 | Path Hamiltonian pair head | Directed pair terms per `path_hamiltonian_design.md`, with a symmetric-only head as an ablation | D-14 |
+| PD-13 | Research stopping rule | If no Tier 1 cache passes the evidence gate: report "no signal", stop architecture work, write up the negative result | D-10 (research part) |
 
-Every D-item in `improvement_plan.md` §2 now has a provisional decision,
-except the part of D-10 in the note under PD-10. PD-7 to PD-12 were recorded
-2026-10-19, after PD-1 to PD-6.
+Every D-item in `improvement_plan.md` §2 now has a provisional decision.
+PD-7 to PD-12 were recorded 2026-10-19, after PD-1 to PD-6; PD-13 and the
+PD-7 / PD-11 amendments later the same day.
 
 ### PD-1 — Tier 0: proceed
 
@@ -129,11 +130,18 @@ except the part of D-10 in the note under PD-10. PD-7 to PD-12 were recorded
   in `config.py` (`EPOCHS`, `PATIENCE`; today 30 and 5) and rerun Tier 0.
   Checkpoints record both values in their provenance, so runs under either
   budget stay distinguishable.
-- Consequences recorded in the plan: Tier 0 is no longer "v46 as trained" in
-  epoch count (the v46 run used 8; `config.py` default is 30). T2b's budget
-  arms were specified against 8 epochs and need re-specifying before Step 9.
-  At the assumed 2.4–7 min per epoch [ASSUMPTION, plan §0.2] a 20-epoch run
-  may exceed 1 hour on T4 and then needs my go-ahead (CLAUDE.md).
+- **Tier 0 definition (amendment 2026-10-19):** Tier 0 is "the v46
+  architecture trained under the pre-registered protocol (PD-7 / PD-10: at
+  most 20 epochs, patience 5)". The capstone's 8 epochs on 80 training
+  items is an explained deviation, recorded in plan Tier 0 "Recipe": it was
+  a 20-question development budget (about 40 optimizer steps, dossier B8),
+  not a protocol, and it is reported as the capstone's number, never as
+  Tier 0.
+- T2b's budget arms are re-specified relative to 20 epochs in the plan (a
+  30-epoch-cap arm, same patience).
+- At the assumed 2.4–7 min per epoch [ASSUMPTION, plan §0.2] a 20-epoch run
+  takes 48–140 min on T4. Runs over 1 hour are expected; I run them myself
+  on Colab.
 
 ### PD-8 — qAIR arm: F0 primary, A3 secondary
 
@@ -162,11 +170,8 @@ except the part of D-10 in the note under PD-10. PD-7 to PD-12 were recorded
   5, at most 20 epochs, the same for every arm and seed.
 - *How to revert:* change the rule in the plan and rerun; the history in
   every checkpoint records the epoch each run stopped at.
-- **Note:** plan D-10 asked a different question, the *research* stopping
-  rule: if no Tier 1 cache passes the pre-training gate, report D1 (no signal
-  in the hypotheses) as the result instead of continuing architecture work.
-  PD-10 records the training stopping rule. The research stopping rule is
-  still open.
+- **Note:** plan D-10 also asks the *research* stopping rule; that is PD-13.
+  PD-10 is the training stopping rule only.
 
 ### PD-11 — Primary success criterion
 
@@ -175,9 +180,9 @@ except the part of D-10 in the note under PD-10. PD-7 to PD-12 were recorded
   test is evaluated once and the claim cannot move after the result.
 - *How to revert:* edit plan §3 before any test evaluation. After a test
   evaluation, a changed criterion is reported as a post-hoc change.
-- Plan §3 item 4 also requires qAIR to beat each baseline in all 3 seeds and
-  reports per-seed McNemar p-values. PD-11 does not mention these; until
-  decided otherwise they stay in §3 as stated.
+- **Amendment 2026-10-19:** both stricter conditions of plan §3 item 4 are
+  part of PD-11: qAIR's accuracy exceeds each baseline's in all 3 seeds, and
+  per-seed exact McNemar p-values are reported. All conditions must hold.
 
 ### PD-12 — Directed pair head, symmetric-only ablation
 
@@ -188,6 +193,23 @@ except the part of D-10 in the note under PD-10. PD-7 to PD-12 were recorded
 - *How to revert:* make the symmetric head the default and keep the directed
   one as the ablation; both are built behind the default-off `readout="path"`
   flag (PD-5).
+
+### PD-13 — Research stopping rule: no signal, stop, write it up
+
+- *Status:* provisional — pending supervisor review.
+- *Reason:* by the data-processing argument (dossier D1), if the hypotheses
+  carry no information about the answer beyond the question and options, no
+  aggregator can extract any, so architecture work on such a cache cannot be
+  interpreted. The rule is fixed before Tier 1 so it cannot be chosen after
+  the gate result.
+- *Rule (plan D-10, as written):* if no Tier 1 cache passes the evidence gate
+  (plan Tier 1 "pre-training gate"), report "no signal" as the finding,
+  stop architecture work (Tiers 2–4 at most as mechanism checks with the
+  pre-stated expectation of no accuracy change), and write up the negative
+  result.
+- *How to revert:* if the supervisor rejects it, continue Tiers 2–4 on the
+  best available cache and state in every result that the cache failed the
+  gate.
 
 ## After the supervisor's review
 

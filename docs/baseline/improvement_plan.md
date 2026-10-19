@@ -75,6 +75,12 @@ training at 1–3 s/step. Derived from those: full ARC-Easy cache (5197 question
 **2.0–4.2 h**; one training epoch (141 steps) **2.4–7 min**; one 8-epoch run
 **19–56 min**. E8's timed smoke run replaces all of these before any long run.
 
+**Epoch count under PD-7.** The run costs and step budgets in this plan were
+written for 8-epoch runs. Under provisional decision PD-7 a Tier 0 or Tier 0′
+run trains for at most 20 epochs (48–140 min), so every "× 8 epochs" cost
+below is at most 2.5 × larger, and less when early stopping triggers. The
+8-epoch step budgets are kept where they explain a mechanism (e.g. T2c).
+
 ---
 
 ## Tier 0 — trustworthiness (Phases 1–3 of the current fix order)
@@ -120,15 +126,20 @@ same ID). The table gives the plan-level fields.
 | 3 | **C2 measurement only**: replace the `destructive_fraction > 0` sanity check; report coherent_acc − classical_acc with a paired CI | a metric true by construction | the check no longer passes on an untrained model | No |
 | 3 | **Full-split, 3-seed runs** of A3, F0, P0, P1 (closes B1, B2, B8 logging, B10) | n = 20, one seed | every test CI half-width ≤ 0.021 (dossier B1) | **Go-ahead** (> 1 h) |
 
-**Recipe for the Tier 0 runs.** Full ARC-Easy train, **8 epochs** (the v46
-run's `EPOCHS = 8`, notebook cell 12 [OBSERVED]), all other hyperparameters as
-in v46. That makes Tier 0 "v46 as trained, on full data". The longer budget is
-Tier 2's single variable (T2b). *Decision needed (D-2): 8 epochs or the
-`config.py:269` default of 30 with `PATIENCE = 5`.* **Provisional decision
-PD-7** ([`supervisor_decisions.md`](supervisor_decisions.md)): at most 20 epochs with early
-stopping on validation accuracy, patience 5 (PD-10). Tier 0 is then not "v46
-as trained" in epoch count, and the 8-epoch figures below (step budget, cost)
-are for the v46 recipe, not the provisional one.
+**Recipe for the Tier 0 runs (provisional decisions PD-7, PD-10 in
+[`supervisor_decisions.md`](supervisor_decisions.md)).** Tier 0 is **the v46
+architecture trained under the pre-registered protocol**: full ARC-Easy
+train, at most **20 epochs**, early stopping on validation accuracy with
+patience 5, all other hyperparameters as in v46. Step budget Σ lr_t at 20
+epochs: 0.742 (base group) and 0.297 (2e-4 group) if no early stop
+[DERIVED: A.1 formula]. Cost 48–140 min per run [ASSUMPTION, §0.2].
+
+*Explained deviation from the capstone.* The v46 run used `EPOCHS = 8` on 80
+training items (notebook cell 12 [OBSERVED]), about 40 optimizer steps
+(dossier B8). That was a development budget, not a protocol, so Tier 0 does
+not copy it; the capstone's number is reported as the capstone's, never as
+Tier 0. The originally proposed 8-epoch recipe (D-2) is kept in §2 for the
+supervisor's review.
 
 **Diagnostics logged in every Tier 0 run** (they are the reference values that
 later tiers are predicted against): collapse entropy and KL to uniform,
@@ -378,7 +389,7 @@ pre-stated expectation of no accuracy change.
   PD-2: an extra arm behind a flag; the v46 target stays the default and the
   main baseline. The v47 patch is not applied (CLAUDE.md).
 
-### T2b — Training budget: full ARC-Easy train, 15–30 epochs
+### T2b — Training budget: a longer epoch cap than Tier 0′ (re-specified for PD-7)
 
 - **Fixes:** B8 (40 optimizer steps in v46) beyond what full data already gives.
 - **Mechanism (dossier B8).** Adam moves a parameter by at most about lr per
@@ -391,13 +402,17 @@ pre-stated expectation of no accuracy change.
   stationary-point signature). Validation accuracy: no predicted direction
   [HYPOTHESIS]. With 469 parameters per example, longer training may overfit;
   `PATIENCE = 5` (`config.py:270`) applies, and best-val vs test is reported.
-- **Single-variable comparison.** Tier 0′ (8 epochs) vs 15 epochs, and vs 30
-  epochs, same seeds. Under PD-7 the Tier 0′ reference is at most 20 epochs
-  with patience 5, so these arms need re-specifying before Step 9. Note: `T_max` equals the epoch count, so the LR schedule
-  stretches with the budget. That is part of "the budget" as one variable.
-- **T4 cost [ASSUMPTION].** One run: 36–105 min (15 epochs) or 72–210 min (30
-  epochs). 6 runs at 30 epochs: 7–21 h. **Each 30-epoch run exceeds 1 h and
-  needs the go-ahead** (CLAUDE.md).
+- **Single-variable comparison (re-specified 2026-10-19 for PD-7).** Tier 0′
+  (cap 20 epochs, patience 5) vs the same with a **30-epoch cap** (patience
+  5), same seeds. Step budget Σ lr_t without early stopping: 0.742 vs 1.095
+  (base group), 0.297 vs 0.439 (2e-4 group) [DERIVED: A.1]. Note: `T_max`
+  equals the epoch cap, so the LR schedule stretches with the cap even when a
+  run stops early. That is part of "the budget" as one variable. The
+  15-epoch arm of the original plan is dropped: it is below the Tier 0′ cap.
+  The mechanism and prediction above were written against 8 epochs; the
+  prediction still applies to the 20 → 30 step.
+- **T4 cost [ASSUMPTION].** One 30-epoch run: 72–210 min. 6 runs: 7–21 h.
+  Runs over 1 h are expected; they are run on Colab by me (PD-7).
 - **Risks.** Overfitting; cost. **Supervisor approval:** no architecture
   approval; go-ahead for > 1 h runs. Provisional decision PD-4: separate
   flagged arms.
@@ -827,7 +842,7 @@ decision was taken.
 | # | Decision | My recommendation | Provisional decision |
 |---|---|---|---|
 | D-1 | Approve Tier 0 as scoped (bugs, baselines, statistics), and the go-ahead for the ARC-Easy cache build and the 3-seed runs (each > 1 h on T4) | Approve | PD-1: proceed |
-| D-2 | Tier 0 epoch count: 8 (v46 as run) or 30 with patience 5 (`config.py` default) | 8, so Tier 0 is "v46 as trained"; longer budgets are tested in T2b | PD-7: at most 20 epochs, patience 5 |
+| D-2 | Tier 0 epoch count: 8 (v46 as run) or 30 with patience 5 (`config.py` default) | 8, so Tier 0 is "v46 as trained"; longer budgets are tested in T2b | PD-7: at most 20 epochs, patience 5; Tier 0 = v46 architecture under this protocol |
 | D-3 | Which arm is "qAIR" for the success criterion: F0 (with the LLM prior; deployed system) or A3 (no prior) | F0 as primary, A3 always reported: F0 contains the cloze score as a feature, so A3 shows whether reasoning adds anything without it | PD-8: F0 primary, A3 secondary |
 | D-4 | Tier 1: allow cache rebuilds with (a) a larger generator (which sizes; licences), (b) contrastive prompts, (c) stance verification with regeneration, (d) M = 2–3 samples; accept that baselines are recomputed with the new generator | Approve the staged, gate-checked procedure; pre-screen 1.5B, 3B and 7B-4bit on validation | PD-3: flagged separate arms; v46 cache stays the default |
 | D-5 | A7: apply the soundness-gated target (validator hunk of the v47 patch only) in Tier 2; may the `amp_entropy` metric (measurement only) be added in Tier 0? | Approve both | PD-2: A7 as an extra flagged arm, v46 target the default; PD-9: `amp_entropy` diagnostic only |
@@ -835,8 +850,8 @@ decision was taken.
 | D-7 | C1: is the Born readout part of the claim to defend, or may a signed-readout arm be tested (and labelled additive scoring if it reduces to that)? | Test it as an arm; keep Born as the reference | PD-5: pre-registered arm; Born readout the default |
 | D-8 | C2: approve the pre-registered ρ = π/2 vs π comparison | Approve with T2c | PD-5: pre-registered arm; ρ = π the default |
 | D-9 | C3/C4/C5: risk–coverage reporting (no approval needed) now; pruning deferred; which encoder options to probe; C5 cleanup | Probe all three C4 options cheaply; train only those that pass; defer pruning | PD-5 for C3 (pruning not covered); PD-6: C4/C5 deferred |
-| D-10 | Stopping rule: if no Tier 1 cache passes the gate, report D1 as the result instead of continuing architecture work | Agree | Open. PD-10 records the *training* stopping rule (validation accuracy, patience 5, at most 20 epochs, pre-registered); this research stopping rule is not decided |
-| D-11 | Confirm the primary success criterion in §3 (arms, test, α, Holm over 2 contrasts) | Confirm before any test-set evaluation | PD-11: F0 beats both LLM baselines, full test, 3 seeds, paired bootstrap + Holm, p < 0.05, v46 baseline alongside |
+| D-10 | Stopping rule: if no Tier 1 cache passes the gate, report D1 as the result instead of continuing architecture work | Agree | PD-13: as written (no gate pass → report "no signal", stop architecture work, write up the negative result). PD-10 is the separate training stopping rule |
+| D-11 | Confirm the primary success criterion in §3 (arms, test, α, Holm over 2 contrasts) | Confirm before any test-set evaluation | PD-11: F0 beats both LLM baselines, full test, 3 seeds, paired bootstrap + Holm, p < 0.05, same direction in all 3 seeds, per-seed McNemar reported, v46 baseline alongside |
 | D-12 | **Approve the path Hamiltonian arms (H0/H1)**, with H1-GS as secondary (Tier 3b; thermal readout P-2 already accepted) | Approve, to run only after a Tier 1 cache passes the gate | PD-5: pre-registered arms |
 | D-13 | Approve arm **H2** (non-stoquastic X_iX_j couplings, sign unconstrained) with the **H2s** capacity control; XX only or XX + YY | Approve, XX only; H2s required for any interference claim | PD-5: pre-registered arms (H2 with H2s) |
 | D-14 | Directed (a, b, r) pair head as the default, with the symmetric-only **H1-sym** ablation | Approve | PD-12: directed pair terms; symmetric-only head as ablation |
