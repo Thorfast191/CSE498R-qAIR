@@ -294,3 +294,13 @@ fix commit cannot name itself.
   Tier 2 under provisional decision PD-2. A12 open (proposed).
 - **Next:** proposal for DoD §2.3, §2.7 and §2.2 logging (before any baseline
   run), then the Step 6 T4 notebook and Phase 2.
+
+## 2026-10-19 — DoD §2.3: collapse correctness test
+
+- **Commit:** `f355965`. Test only, no code change.
+- **Test:** `tests/test_collapse_correctness.py` (new); hand-computed tiny
+  example, details in issues.md §10.
+- **Environment:** `qenv` scratch venv as for A3.
+- **Results:** 22 passed; `python -m pytest tests -q` → 221 passed, 1 skipped
+  in 122.99 s. 7 mutations fail ≥ 1 test; 3 single-mask removals are
+  equivalent (redundant masking).

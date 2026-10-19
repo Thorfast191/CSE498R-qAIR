@@ -111,8 +111,8 @@ Full suite at close: **199 passed, 1 skipped** (the real-Qwen test) in
   (E10, E11).
 - **A12** (found writing the §2.6 test): latent shuffle misalignment when K
   is not a multiple of N; proposed, not fixed.
-- **Before any baseline run** (decision 2026-10-19; proposed, awaiting
-  approval): DoD §2.3 collapse correctness, §2.7 per-epoch parameter drift,
+- **Before any baseline run** (decision 2026-10-19, approved): DoD §2.3
+  collapse correctness (done, `f355965`), §2.7 per-epoch parameter drift,
   §2.2 per-epoch per-module gradient norms.
 - **Phase 2:** E6 manifest, E5, E8, E9; then the ARC-Easy cache build.
 
@@ -1032,6 +1032,23 @@ part of C2.
   polarity is constant within a mode block and the shuffle only reorders rows
   within blocks.
 - **Full suite:** 199 passed, 1 skipped in 122.09 s.
+
+### Regression test DoD §2.3 collapse correctness (2026-10-19, `f355965`)
+- `tests/test_collapse_correctness.py`: `CoherentCollapse` on a hand-built
+  batch (B = 2, K = 4, N = 3; one padded option, one padded hypothesis)
+  against values computed independently with `math`. Valid-option
+  probabilities sum to 1 (±1e-5); padded options and hypotheses get ≤ 1e-12;
+  `"classical"` = Σ_k r_k² t_kn², `"zero"` = (Σ_k r_k t_kn)², `"learned"` =
+  |Σ_k r_k t_kn e^{iφ_kn}|² (±1e-6 on the distribution); support/attack phases
+  0/π give (S_n − T_n)² (C1 documented, not changed); hypothesis weights are
+  r_k² normalized over valid hypotheses. The full model's scores are a
+  distribution over valid options for all 14 arms (padded mass e^−30).
+- Mutations: wrong classical, in-phase or imaginary part, option temperature
+  offset, padding floor −20 and no hypothesis mask on r each fail ≥ 1 test.
+  Removing any one padding mask alone passes because each is backed by a
+  second mask (`invalid` in `log_t`, the `weights` fill, the mask on r):
+  equivalent mutants. Removing both option masks fails 7 tests.
+- Full suite: 221 passed, 1 skipped in 122.99 s.
 
 ### Note for every training run
 **Always commit before starting a training run; the code fingerprint ignores untracked .py files.**
