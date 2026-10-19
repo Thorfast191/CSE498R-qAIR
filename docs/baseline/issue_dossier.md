@@ -311,7 +311,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** none. **Needs supervisor approval?** No.
 
 #### A1 `CoherentCollapse.hypothesis_temp` is a dead parameter
-- **Status:** **fixed 2026-10-19** with A2 (commit in docs/research_log.md;
+- **Status:** **fixed 2026-10-19** with A2 in `4309bde` (
   evidence in issues.md A2). Option (a), deletion. Checkpoint format 3 with
   a loader that drops only the known removed keys. Forward pass verified
   bit-identical against the pre-change code. Same-seed initialization
@@ -358,7 +358,7 @@ $A_n = S_n + e^{i\rho}R_n$.
   capstone numbers. **Needs supervisor approval?** (a) no; (b) yes (forward pass).
 
 #### A2 Other parameters that never receive gradient
-- **Status:** **fixed 2026-10-19** with A1 (commit in docs/research_log.md;
+- **Status:** **fixed 2026-10-19** with A1 in `4309bde` (
   evidence in issues.md A2). `confidence` removed; `phase_head`,
   `llm_prior_weight`, validator-only weights and `fusion.energy_alpha` built
   only when used. A documented no-gradient allowance remains:

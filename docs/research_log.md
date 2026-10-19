@@ -232,7 +232,7 @@ fix commit cannot name itself.
 
 ## 2026-10-19 — A1 + A2: parameters that never receive gradient
 
-- **Commit:** see the follow-up entry below.
+- **Commit:** `4309bde`.
 - **Diagnosis first (scratch probes outside the repo):** dead parameters per
   arm (one forward/backward on a fake batch); `selector.energy_net.6.bias`
   gradient 7e-9..9e-8 vs weights 0.31..1.44, +5 shift changes scores

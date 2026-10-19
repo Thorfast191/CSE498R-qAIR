@@ -104,7 +104,7 @@ this repo decides.
   train from local `main`.
 
 ### A1 — `CoherentCollapse.hypothesis_temp` is a dead parameter
-- **Category:** A · **Severity:** Medium · **Status:** **fixed** with A2 (commit: see research_log.md)
+- **Category:** A · **Severity:** Medium · **Status:** **fixed** with A2 in `4309bde`
 - **Evidence:** `models/full_model.py:405` always passes
   `hyp_temperature=collapse_out["temperature"]`, so `models/interference.py:141`
   (the only read of `hypothesis_temp`, defined at `:104`) never runs. Drift after
@@ -118,7 +118,7 @@ this repo decides.
   `grad is None`/zero parameter.
 
 ### A2 — Other parameters that never receive gradient
-- **Category:** A · **Severity:** Low–Medium · **Status:** **fixed** with A1 (commit: see research_log.md); fix and evidence below
+- **Category:** A · **Severity:** Low–Medium · **Status:** **fixed** with A1 in `4309bde`; fix and evidence below
 - **Evidence:** `models/collapse.py:55-60,85`: the `confidence` head is only
   returned (`models/full_model.py:470`) and never used in `training/losses.py`.
   `models/full_model.py:203,384-387`: `phase_head` is unused when
