@@ -37,10 +37,16 @@ becomes the code default, and the v46 baseline row stays in every table.
 | PD-4 | Tier 2: training budget, separate LR group for phase/temperature scalars | Proceed behind flags as separate arms | D-6 (T2b budget arms) |
 | PD-5 | Tier 3: C1 signed readout, C2 ρ = π/2 arm, C3 abstention; path Hamiltonian arms H0/H1/H2 | Proceed as separate pre-registered arms. The v46 readout stays the default | D-7, D-8, D-9 (C3 part), D-12, D-13, D-15 |
 | PD-6 | C4/C5 (Tier 4) | Deferred | D-9 (C4/C5 part) |
+| PD-7 | Tier 0 epoch count | At most 20 epochs, early stopping patience 5 | D-2 |
+| PD-8 | Which arm is "qAIR" | Primary F0 (full pipeline with LLM prior, the capstone's reported configuration); secondary A3 (no LLM prior) | D-3 |
+| PD-9 | `amp_entropy` | Logged as a diagnostic only | D-5 (`amp_entropy` part) |
+| PD-10 | Stopping rule for training | Early stopping on validation accuracy, patience 5, at most 20 epochs; pre-registered, never chosen after seeing results | D-10 (see note) |
+| PD-11 | Primary success criterion | Primary qAIR arm beats both direct LLM baselines on full ARC-Easy test, 3 seeds, paired bootstrap with Holm correction, p < 0.05; v46 baseline reported alongside | D-11 |
+| PD-12 | Path Hamiltonian pair head | Directed pair terms per `path_hamiltonian_design.md`, with a symmetric-only head as an ablation | D-14 |
 
-Not decided here, still open for the supervisor: D-2 (Tier 0 epoch count),
-D-3 (which arm is "qAIR"), D-5's `amp_entropy` question, D-10 (stopping
-rule), D-11 (primary success criterion) and D-14 (directed pair head).
+Every D-item in `improvement_plan.md` §2 now has a provisional decision,
+except the part of D-10 in the note under PD-10. PD-7 to PD-12 were recorded
+2026-10-19, after PD-1 to PD-6.
 
 ### PD-1 — Tier 0: proceed
 
@@ -112,6 +118,76 @@ rule), D-11 (primary success criterion) and D-14 (directed pair head).
   counts. They come after the Tier 1 to Tier 3 results.
 - *How to revert:* nothing to revert; take them up when the supervisor
   approves.
+
+### PD-7 — Tier 0 epoch count: at most 20, patience 5
+
+- *Status:* provisional — pending supervisor review.
+- *Reason:* the v46 run trained for 8 epochs on 80 questions (about 40
+  optimizer steps, dossier B8); a fixed cap with early stopping on validation
+  gives every arm the same, pre-stated budget on full data.
+- *How to revert:* set the cap and patience back to the supervisor's choice
+  in `config.py` (`EPOCHS`, `PATIENCE`; today 30 and 5) and rerun Tier 0.
+  Checkpoints record both values in their provenance, so runs under either
+  budget stay distinguishable.
+- Consequences recorded in the plan: Tier 0 is no longer "v46 as trained" in
+  epoch count (the v46 run used 8; `config.py` default is 30). T2b's budget
+  arms were specified against 8 epochs and need re-specifying before Step 9.
+  At the assumed 2.4–7 min per epoch [ASSUMPTION, plan §0.2] a 20-epoch run
+  may exceed 1 hour on T4 and then needs my go-ahead (CLAUDE.md).
+
+### PD-8 — qAIR arm: F0 primary, A3 secondary
+
+- *Status:* provisional — pending supervisor review.
+- *Reason:* F0 is the configuration the capstone reported. A3 is always
+  reported next to it, because F0 contains the cloze score as a feature and
+  A3 shows whether the reasoning adds anything without it.
+- *How to revert:* swap the arm named in plan §3 item 1. Both arms are run
+  in every comparison, so no rerun is needed.
+
+### PD-9 — `amp_entropy`: diagnostic only
+
+- *Status:* provisional — pending supervisor review.
+- *Reason:* it is a measurement of the collapse, useful as a reference value
+  for later tiers; it never enters the loss or model selection.
+- *How to revert:* remove the metric from the logging. No result depends on
+  it.
+- It is written against the current code; the v47 patch is reference only
+  (CLAUDE.md, PD-2).
+
+### PD-10 — Training stopping rule: pre-registered early stopping
+
+- *Status:* provisional — pending supervisor review.
+- *Reason:* the stopping rule is fixed before any run so it cannot be chosen
+  after seeing results (plan §0 rules 4 and 6): validation accuracy, patience
+  5, at most 20 epochs, the same for every arm and seed.
+- *How to revert:* change the rule in the plan and rerun; the history in
+  every checkpoint records the epoch each run stopped at.
+- **Note:** plan D-10 asked a different question, the *research* stopping
+  rule: if no Tier 1 cache passes the pre-training gate, report D1 (no signal
+  in the hypotheses) as the result instead of continuing architecture work.
+  PD-10 records the training stopping rule. The research stopping rule is
+  still open.
+
+### PD-11 — Primary success criterion
+
+- *Status:* provisional — pending supervisor review.
+- *Reason:* fixed before any test-set evaluation (plan §0 rule 4), so the
+  test is evaluated once and the claim cannot move after the result.
+- *How to revert:* edit plan §3 before any test evaluation. After a test
+  evaluation, a changed criterion is reported as a post-hoc change.
+- Plan §3 item 4 also requires qAIR to beat each baseline in all 3 seeds and
+  reports per-seed McNemar p-values. PD-11 does not mention these; until
+  decided otherwise they stay in §3 as stated.
+
+### PD-12 — Directed pair head, symmetric-only ablation
+
+- *Status:* provisional — pending supervisor review.
+- *Reason:* the directed (a, b, r) pair terms are the design in
+  `path_hamiltonian_design.md`; the symmetric-only head (arm H1-sym) tests
+  whether the direction matters.
+- *How to revert:* make the symmetric head the default and keep the directed
+  one as the ablation; both are built behind the default-off `readout="path"`
+  flag (PD-5).
 
 ## After the supervisor's review
 
