@@ -22,5 +22,6 @@ exports/*
 .DS_Store
 
 # Local working files, never tracked (untracked again after 2dedcd8)
-docs/prompts/
+docs/prompts/*
+!docs/prompts/PROMPTS_steps_3_to_11.md
 docs/baseline/qAIR_baseline_issues.docx
