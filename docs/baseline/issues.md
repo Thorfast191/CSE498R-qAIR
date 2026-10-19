@@ -50,6 +50,7 @@ this repo decides.
 7. **A1, A2** Parameters that never receive gradient. The fix approach (remove vs exclude from the optimizer) needs confirmation because of checkpoint compatibility (rule 9).
 8. **A7** Validator relevance target has no hypothesis axis. **Blocked: supervisor approval.** A candidate fix exists in the v47 patch.
 9. Regression tests from E8: circuit input-dependence (A0, `8bfc7bb`) and gradient coverage (A1/A2, `4309bde`) (DoD §2.1–2.2). *Done.*
+   Added: no label leakage (DoD §2.5) and option-shuffle alignment (DoD §2.6), `0997a99`. **A12** (found writing §2.6): latent shuffle misalignment when K is not a multiple of N; proposed, not fixed.
 
 **Phase 2 — remaining engineering**
 10. **E6** Run provenance manifest (commit, cache hash, versions, device, seed).
@@ -945,6 +946,46 @@ part of C2.
   restored; numpy not restored; no per-arm re-seed; warn-only not recorded;
   `DETERMINISTIC = False`) each fail ≥ 1 test. Full suite: 74 passed,
   1 skipped.
+
+### A12 — Shuffling misaligns hypotheses when K is not a multiple of N
+- **Category:** A · **Severity:** Low (latent) · **Status:** **open, proposed; not fixed** (found 2026-10-19 while writing the DoD §2.6 test)
+- **Evidence:** `training/dataset.py` `collate_fn`, `shuffle_options=True`:
+  the options and LLM scores are always permuted, but when `k % n != 0` the
+  hypotheses, `polarity`, `is_fallback` and `hyp_option` are left in their
+  original order. `align` is then built from the unpermuted `hyp_option`, so
+  each hypothesis points at whatever option now sits at its old index. Probe
+  (outside the repo, `torch.manual_seed(3)`, N = 4, K = 6): option codes after
+  shuffling `[2, 3, 1, 0]`; hypotheses about options `[0, 1, 2, 3, 0, 1]` are
+  aligned to options `[2, 3, 1, 0, 2, 3]`. The code comment says such a sample
+  is "left alone rather than silently misaligned"; it is misaligned.
+- **Reachability [VERIFIED: `models/generator.py:384-446`,
+  `training/dataset.py:318-340`]:** caches built by this code always have
+  K = len(modes) × N in mode-major order, so `k % n == 0` and the path is not
+  reached. Only a hand-built or legacy sample can reach it.
+- **Proposed fix (not implemented):** raise a `ValueError` when shuffling a
+  sample with `k % n != 0` (or whose `hyp_option` is not mode-major), instead
+  of returning misaligned tensors. One file plus a test case in
+  `tests/test_option_shuffle_alignment.py`.
+
+### Regression tests DoD §2.5 and §2.6 (2026-10-19, `0997a99`)
+- **§2.5 no label leakage:** `tests/test_no_label_leakage.py`. For all 14
+  arms, in eval and in train mode (same dropout seed), every model output is
+  bit-identical with `y` omitted, correct or wrong, except
+  `validator.relevance_target`, which equals the one-hot of `y` broadcast over
+  K. Mutations: an energy offset when `y` is given, `relevance += 1e-3 ×
+  target` and a target of 0.5 each fail ≥ 1 test.
+- **§2.6 option shuffling:** `tests/test_option_shuffle_alignment.py`. A
+  hand-built ragged batch (3, 4, 5 options; every tensor carries an option /
+  mode code), 50 seeded shuffles: each hypothesis stays aligned to its option,
+  with its polarity and fallback flag; each LLM score stays with its option;
+  the label points at the same option; masks and padding are correct. On 16
+  cached samples, shuffled vs unshuffled, the label's option and the
+  hypotheses about it are the same. Mutations: not permuting H, not remapping
+  `y`, not permuting the LLM scores and not permuting `is_fallback` each fail
+  ≥ 1 test. Not permuting `polarity` passes, and is an equivalent mutant:
+  polarity is constant within a mode block and the shuffle only reorders rows
+  within blocks.
+- **Full suite:** 199 passed, 1 skipped in 122.09 s.
 
 ### Note for every training run
 **Always commit before starting a training run; the code fingerprint ignores untracked .py files.**

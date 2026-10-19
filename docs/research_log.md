@@ -269,3 +269,16 @@ fix commit cannot name itself.
   `self.quantum(z * 0)`) fail 4 / 4 / 1 tests. `python -m pytest tests -q` →
   167 passed, 1 skipped in 85.96 s.
 - **Not done:** `lightning.gpu` is checked in the Step 6 T4 notebook.
+
+## 2026-10-19 — DoD §2.5, §2.6: label-leakage and option-shuffle tests
+
+- **Commit:** `0997a99`. Tests only, no code change.
+- **Tests:** `tests/test_no_label_leakage.py`, `tests/test_option_shuffle_alignment.py`
+  (new). Details and mutations in issues.md §10.
+- **Environment:** `qenv` scratch venv as for A3.
+- **Results:** 32 passed for the two files; `python -m pytest tests -q` →
+  199 passed, 1 skipped in 122.09 s. 7 of 8 mutations fail ≥ 1 test; the
+  surviving one (`polarity` not permuted) is equivalent.
+- **Finding:** A12, latent misalignment in `collate_fn` when K is not a
+  multiple of N; unreachable from caches built by this code. Proposed, not
+  fixed.
