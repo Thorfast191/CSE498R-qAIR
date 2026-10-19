@@ -284,7 +284,8 @@ $A_n = S_n + e^{i\rho}R_n$.
 ### Part A — Bugs
 
 #### A0 Input-ignoring circuit (Hadamard + default `rotation="X"`) — verified ABSENT in v46
-- **Category / severity / blocks:** A / none in v46 / nothing; regression test pending.
+- **Category / severity / blocks:** A / none in v46 / nothing. Regression test
+  `tests/test_circuit_input_dependence.py` (`8bfc7bb`, 2026-10-19; issues.md A0).
 - **Observation:** v46 per-observable output std over 64 random inputs is
   0.036–0.30, and outputs at two inputs differ by up to 0.74. v40 (local `main`)
   gives std ≈ 1e-16 [VERIFIED: scratch PennyLane 0.42.3 test, issues.md A0].

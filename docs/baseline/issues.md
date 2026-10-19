@@ -49,7 +49,7 @@ this repo decides.
 6. **A5** `input_ablation` rebuilds the wrong architecture without a saved config.
 7. **A1, A2** Parameters that never receive gradient. The fix approach (remove vs exclude from the optimizer) needs confirmation because of checkpoint compatibility (rule 9).
 8. **A7** Validator relevance target has no hypothesis axis. **Blocked: supervisor approval.** A candidate fix exists in the v47 patch.
-9. Regression tests from E8: circuit input-dependence (A0) and gradient coverage (DoD §2.1–2.2).
+9. Regression tests from E8: circuit input-dependence (A0, `8bfc7bb`) and gradient coverage (A1/A2, `4309bde`) (DoD §2.1–2.2). *Done.*
 
 **Phase 2 — remaining engineering**
 10. **E6** Run provenance manifest (commit, cache hash, versions, device, seed).
@@ -100,8 +100,15 @@ this repo decides.
 
   v46's output depends on its input. v40's is constant up to floating-point
   rounding (about 1e-16), so the test detects the bug when it is present.
-- **Follow-up:** Commit this test as a regression test (Phase 1, item 9). Do not
-  train from local `main`.
+- **Regression test (2026-10-19, `8bfc7bb`):** `tests/test_circuit_input_dependence.py`
+  runs the real `QuantumEvolutionLayer` circuit on `lightning.qubit`, 6 qubits,
+  64 random inputs in (−π, π), 3 weight draws. Every one of the 18 observables
+  must have std > 1e-3 (DoD §2.1); measured minimum 5.7e-02 / 5.4e-02 / 3.9e-02.
+  The layer's phase must vary over 64 hypotheses (measured std 1.3e-02).
+  Negative control: forcing `AngleEmbedding`'s default `rotation="X"` into the
+  real layer code gives std < 1e-12 for both. Mutations of the source
+  (`rotation="X"`; `inputs * 0`; zeroed circuit input in `forward`) each fail
+  ≥ 1 test. Do not train from local `main`.
 
 ### A1 — `CoherentCollapse.hypothesis_temp` is a dead parameter
 - **Category:** A · **Severity:** Medium · **Status:** **fixed** with A2 in `4309bde`

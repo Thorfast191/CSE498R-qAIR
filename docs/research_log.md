@@ -255,3 +255,17 @@ fix commit cannot name itself.
   14 arms and `qair_v46_best.pt`. Init change for seed 0 only in `phase_head`
   of A0, A1, A2, PS. Six mutations each fail ≥ 1 test.
 - **Not done:** no ARC-Easy cache, no real training.
+
+## 2026-10-19 — A0: circuit input-dependence regression test
+
+- **Commit:** `8bfc7bb`. Test only, no code change.
+- **Test:** `tests/test_circuit_input_dependence.py` (new). Real
+  `QuantumEvolutionLayer`, `lightning.qubit`, `N_QUBITS = 6`, 64 random inputs
+  in (−π, π), weight seeds 0/1/2; threshold std > 1e-3 per observable (DoD §2.1).
+- **Environment:** `qenv` scratch venv as for A3.
+- **Results:** minimum per-observable std 5.701e-02 / 5.374e-02 / 3.923e-02;
+  layer phase std over 64 hypotheses 1.347e-02. With `rotation="X"` forced
+  (v40 bug) both are < 1e-12. Source mutations (`rotation="X"`, `inputs * 0`,
+  `self.quantum(z * 0)`) fail 4 / 4 / 1 tests. `python -m pytest tests -q` →
+  167 passed, 1 skipped in 85.96 s.
+- **Not done:** `lightning.gpu` is checked in the Step 6 T4 notebook.
