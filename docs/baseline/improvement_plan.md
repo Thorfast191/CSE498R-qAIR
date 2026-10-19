@@ -1,5 +1,14 @@
 # qAIR improvement plan — Tiers 0–4 (PROPOSAL, for supervisor review)
 
+> **Decision status (2026-10-19).** The supervisor has not reviewed this plan
+> yet. Work proceeds under the **provisional decisions** in
+> [`supervisor_decisions.md`](supervisor_decisions.md) (each "provisional — pending supervisor
+> review"). The rule for all of them: no change replaces v46 behaviour by
+> default; every new behaviour is a flagged, default-off arm, and every
+> result table reports the v46 baseline alongside. "Supervisor approval:
+> Yes" below means the item still needs the supervisor's review; until then
+> the provisional decision named next to it applies.
+
 Branch `baseline` (code byte-identical to v46 `9552498`). Written 2026-10-18.
 **Planning document only: no code is changed and no run is made by it.** It
 builds on `docs/baseline/issues.md` (issue IDs, fix order) and
@@ -224,6 +233,8 @@ per-component accuracy effects it did not measure.
   coursework but must be stated). Contamination rises with model size
   [ASSUMPTION]; it shifts generator and qAIR equally in paired comparisons.
 - **Supervisor approval:** **Yes** (changes the model's input evidence).
+  Provisional decision PD-3: proceed behind a flag as a separate arm; the v46
+  cache stays the default.
 
 ### T1b — Contrastive prompts that see all options
 
@@ -248,7 +259,8 @@ per-component accuracy effects it did not measure.
   costs about × 1.2–1.5. Validation-only gate build ≈ 0.3–0.7 h at 0.5B rates.
 - **Risks.** Alignment drift. The prompt could leak position cues. No label
   leakage: the generator never sees the answer key.
-- **Supervisor approval:** **Yes.**
+- **Supervisor approval:** **Yes.** Provisional decision PD-3: flagged
+  separate arm.
 
 ### T1c — Attack verification by LLM scoring; filter or regenerate non-compliant attacks
 
@@ -285,7 +297,8 @@ per-component accuracy effects it did not measure.
   and may only filter what it can already judge. A larger verifier is a further
   variable, so keep the verifier fixed across steps. Regeneration biases attacks
   towards phrasings the verifier likes.
-- **Supervisor approval:** **Yes** (filtering or regeneration).
+- **Supervisor approval:** **Yes** (filtering or regeneration). Provisional
+  decision PD-3: flagged separate arm.
 
 ### T1d — 2–3 samples per hypothesis
 
@@ -305,7 +318,8 @@ per-component accuracy effects it did not measure.
   comparison [ASSUMPTION].
 - **Risks.** Averaging dilutes distinctive samples. Cost × M on top of a larger
   generator may exceed a reasonable budget; drop T1d first if so.
-- **Supervisor approval:** **Yes** (D4: changing M).
+- **Supervisor approval:** **Yes** (D4: changing M). Provisional decision
+  PD-3: flagged separate arm.
 
 **Tier 1 training cost [ASSUMPTION].** Adopted full cache: 4–25 h depending on
 the generator (T1a), × M. Tier 0′ runs on it: F0 and A3 × 3 seeds × 8 epochs =
@@ -355,7 +369,9 @@ pre-stated expectation of no accuracy change.
 - **Risks.** Labels are used in a new way during training (still none at eval:
   `training/evaluate.py:122` passes no `y`). Collapse metrics are not comparable
   with the capstone.
-- **Supervisor approval:** **Yes** (training objective).
+- **Supervisor approval:** **Yes** (training objective). Provisional decision
+  PD-2: an extra arm behind a flag; the v46 target stays the default and the
+  main baseline. The v47 patch is not applied (CLAUDE.md).
 
 ### T2b — Training budget: full ARC-Easy train, 15–30 epochs
 
@@ -377,7 +393,8 @@ pre-stated expectation of no accuracy change.
   epochs). 6 runs at 30 epochs: 7–21 h. **Each 30-epoch run exceeds 1 h and
   needs the go-ahead** (CLAUDE.md).
 - **Risks.** Overfitting; cost. **Supervisor approval:** no architecture
-  approval; go-ahead for > 1 h runs.
+  approval; go-ahead for > 1 h runs. Provisional decision PD-4: separate
+  flagged arms.
 
 ### T2c — Separate LR group for phase and temperature scalars
 
@@ -421,7 +438,8 @@ pre-stated expectation of no accuracy change.
   and `models/answer_selector.py:201` [VERIFIED]), so they cannot reach 0, but
   a large LR can still make them oscillate. Log every scalar per epoch.
 - **Supervisor approval:** no architecture change; **inform the supervisor**
-  because it changes training dynamics. *Decision D-6.*
+  because it changes training dynamics. *Decision D-6.* Provisional
+  decision PD-4: separate flagged arm.
 
 ### T2d — Re-measure C6 and C7 before changing them
 
@@ -441,7 +459,7 @@ pre-stated expectation of no accuracy change.
 
 ---
 
-## Tier 3 — readout (C1, C2, C3; all need approval)
+## Tier 3 — readout (C1, C2, C3; all need approval; provisional decision PD-5)
 
 ### T3a — C1 signed-readout arm
 
@@ -474,7 +492,8 @@ pre-stated expectation of no accuracy change.
 - **Risks.** It changes the central claimed mechanism; it is not comparable
   with the capstone. A win would be a win for signed or additive evidence
   aggregation, not for "quantum" interference, and must be described that way.
-- **Supervisor approval:** **Yes.** *Decision D-7.*
+- **Supervisor approval:** **Yes.** *Decision D-7.* Provisional decision PD-5:
+  separate pre-registered arm; the Born readout stays the default.
 
 ### T3b — C2 ρ = π/2 initialization arm (pre-registered; π arm kept)
 
@@ -504,7 +523,8 @@ pre-stated expectation of no accuracy change.
   run).
 - **Risks.** It changes the init; not comparable with the capstone. A
   "learned cancellation" result still rests on D1 being resolved.
-- **Supervisor approval:** **Yes.** *Decision D-8.*
+- **Supervisor approval:** **Yes.** *Decision D-8.* Provisional decision PD-5:
+  separate pre-registered arm; the ρ = π init stays the default.
 
 ### T3c — C3 abstention with risk–coverage reporting
 
@@ -527,11 +547,12 @@ pre-stated expectation of no accuracy change.
 - **T4 cost:** none beyond evaluation (minutes).
 - **Risks.** Abstention can make a weak model look good. Always report coverage
   next to accuracy. **Supervisor approval:** curve (measurement) **no**;
-  pruning **yes**.
+  pruning **yes**. Provisional decision PD-5: abstention as a separate
+  pre-registered arm; pruning is not covered.
 
 ---
 
-## Tier 3b — path Hamiltonian: a joint quantum state over all reasoning paths (needs approval)
+## Tier 3b — path Hamiltonian: a joint quantum state over all reasoning paths (needs approval; provisional decision PD-5)
 
 Full design, mathematics, references and numerical checks:
 [`docs/baseline/path_hamiltonian_design.md`](path_hamiltonian_design.md)
@@ -618,10 +639,13 @@ the same as item T3b above (the ρ = π/2 init arm); it is a separate readout.
   - Decisions: D-12 (H0/H1), D-13 (H2 + H2s), D-14 (directed head +
     H1-sym), D-15 (4-file integration).
   - P-2 (thermal readout) is already accepted.
+  - Provisional decision PD-5 (`supervisor_decisions.md`): H0/H1/H2 proceed
+    as separate pre-registered arms behind the default-off flag. D-14 is
+    still open.
 
 ---
 
-## Tier 4 — bottleneck (C4, C5; all need approval)
+## Tier 4 — bottleneck (C4, C5; all need approval; provisionally deferred, PD-6)
 
 ### T4a — C4 encoder options
 
@@ -707,7 +731,10 @@ Tier 4: T4a probes → T4a training for options that pass ∥ T4b
 
 Each tier's adopted change becomes part of the reference only if its
 single-variable comparison favoured it on **validation**. Test numbers are
-reported, never used to adopt.
+reported, never used to adopt. Under the provisional decisions
+([`supervisor_decisions.md`](supervisor_decisions.md)), "reference" means the comparison
+reference for later arms only: the code default stays v46, and every result
+table also reports the v46 baseline.
 
 **Rough total [ASSUMPTION; replaced by E8 measurements].** Tier 0 ≈ 7–17 h;
 Tier 1 ≈ 6–30 h (dominated by the generator choice); Tier 2 ≈ 10–30 h (30-epoch
@@ -786,23 +813,28 @@ scoring, we call it additive scoring. Test data is never used to make choices.
 
 ## 2. Decisions needed from my supervisor
 
-| # | Decision | My recommendation |
-|---|---|---|
-| D-1 | Approve Tier 0 as scoped (bugs, baselines, statistics), and the go-ahead for the ARC-Easy cache build and the 3-seed runs (each > 1 h on T4) | Approve |
-| D-2 | Tier 0 epoch count: 8 (v46 as run) or 30 with patience 5 (`config.py` default) | 8, so Tier 0 is "v46 as trained"; longer budgets are tested in T2b |
-| D-3 | Which arm is "qAIR" for the success criterion: F0 (with the LLM prior; deployed system) or A3 (no prior) | F0 as primary, A3 always reported: F0 contains the cloze score as a feature, so A3 shows whether reasoning adds anything without it |
-| D-4 | Tier 1: allow cache rebuilds with (a) a larger generator (which sizes; licences), (b) contrastive prompts, (c) stance verification with regeneration, (d) M = 2–3 samples; accept that baselines are recomputed with the new generator | Approve the staged, gate-checked procedure; pre-screen 1.5B, 3B and 7B-4bit on validation |
-| D-5 | A7: apply the soundness-gated target (validator hunk of the v47 patch only) in Tier 2; may the `amp_entropy` metric (measurement only) be added in Tier 0? | Approve both |
-| D-6 | Separate LR group for phase and temperature scalars (peak 1.44e-3 to 2.96e-3 depending on budget) | Approve; it is a precondition for D-8 |
-| D-7 | C1: is the Born readout part of the claim to defend, or may a signed-readout arm be tested (and labelled additive scoring if it reduces to that)? | Test it as an arm; keep Born as the reference |
-| D-8 | C2: approve the pre-registered ρ = π/2 vs π comparison | Approve with T2c |
-| D-9 | C3/C4/C5: risk–coverage reporting (no approval needed) now; pruning deferred; which encoder options to probe; C5 cleanup | Probe all three C4 options cheaply; train only those that pass; defer pruning |
-| D-10 | Stopping rule: if no Tier 1 cache passes the gate, report D1 as the result instead of continuing architecture work | Agree |
-| D-11 | Confirm the primary success criterion in §3 (arms, test, α, Holm over 2 contrasts) | Confirm before any test-set evaluation |
-| D-12 | **Approve the path Hamiltonian arms (H0/H1)**, with H1-GS as secondary (Tier 3b; thermal readout P-2 already accepted) | Approve, to run only after a Tier 1 cache passes the gate |
-| D-13 | Approve arm **H2** (non-stoquastic X_iX_j couplings, sign unconstrained) with the **H2s** capacity control; XX only or XX + YY | Approve, XX only; H2s required for any interference claim |
-| D-14 | Directed (a, b, r) pair head as the default, with the symmetric-only **H1-sym** ablation | Approve |
-| D-15 | The 4-file integration for Tier 3b (`path_hamiltonian_design.md` §9) | Approve, behind a default-off flag |
+The last column is the provisional decision recorded in
+[`supervisor_decisions.md`](supervisor_decisions.md) while the supervisor is away; each is
+provisional — pending supervisor review. "Open" means no provisional
+decision was taken.
+
+| # | Decision | My recommendation | Provisional decision |
+|---|---|---|---|
+| D-1 | Approve Tier 0 as scoped (bugs, baselines, statistics), and the go-ahead for the ARC-Easy cache build and the 3-seed runs (each > 1 h on T4) | Approve | PD-1: proceed |
+| D-2 | Tier 0 epoch count: 8 (v46 as run) or 30 with patience 5 (`config.py` default) | 8, so Tier 0 is "v46 as trained"; longer budgets are tested in T2b | Open |
+| D-3 | Which arm is "qAIR" for the success criterion: F0 (with the LLM prior; deployed system) or A3 (no prior) | F0 as primary, A3 always reported: F0 contains the cloze score as a feature, so A3 shows whether reasoning adds anything without it | Open |
+| D-4 | Tier 1: allow cache rebuilds with (a) a larger generator (which sizes; licences), (b) contrastive prompts, (c) stance verification with regeneration, (d) M = 2–3 samples; accept that baselines are recomputed with the new generator | Approve the staged, gate-checked procedure; pre-screen 1.5B, 3B and 7B-4bit on validation | PD-3: flagged separate arms; v46 cache stays the default |
+| D-5 | A7: apply the soundness-gated target (validator hunk of the v47 patch only) in Tier 2; may the `amp_entropy` metric (measurement only) be added in Tier 0? | Approve both | PD-2: A7 as an extra flagged arm, v46 target the default; `amp_entropy` open |
+| D-6 | Separate LR group for phase and temperature scalars (peak 1.44e-3 to 2.96e-3 depending on budget) | Approve; it is a precondition for D-8 | PD-4: flagged separate arm |
+| D-7 | C1: is the Born readout part of the claim to defend, or may a signed-readout arm be tested (and labelled additive scoring if it reduces to that)? | Test it as an arm; keep Born as the reference | PD-5: pre-registered arm; Born readout the default |
+| D-8 | C2: approve the pre-registered ρ = π/2 vs π comparison | Approve with T2c | PD-5: pre-registered arm; ρ = π the default |
+| D-9 | C3/C4/C5: risk–coverage reporting (no approval needed) now; pruning deferred; which encoder options to probe; C5 cleanup | Probe all three C4 options cheaply; train only those that pass; defer pruning | PD-5 for C3 (pruning not covered); PD-6: C4/C5 deferred |
+| D-10 | Stopping rule: if no Tier 1 cache passes the gate, report D1 as the result instead of continuing architecture work | Agree | Open |
+| D-11 | Confirm the primary success criterion in §3 (arms, test, α, Holm over 2 contrasts) | Confirm before any test-set evaluation | Open |
+| D-12 | **Approve the path Hamiltonian arms (H0/H1)**, with H1-GS as secondary (Tier 3b; thermal readout P-2 already accepted) | Approve, to run only after a Tier 1 cache passes the gate | PD-5: pre-registered arms |
+| D-13 | Approve arm **H2** (non-stoquastic X_iX_j couplings, sign unconstrained) with the **H2s** capacity control; XX only or XX + YY | Approve, XX only; H2s required for any interference claim | PD-5: pre-registered arms (H2 with H2s) |
+| D-14 | Directed (a, b, r) pair head as the default, with the symmetric-only **H1-sym** ablation | Approve | Open |
+| D-15 | The 4-file integration for Tier 3b (`path_hamiltonian_design.md` §9) | Approve, behind a default-off flag | PD-5: behind the default-off flag |
 
 ---
 
