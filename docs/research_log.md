@@ -282,3 +282,15 @@ fix commit cannot name itself.
 - **Finding:** A12, latent misalignment in `collate_fn` when K is not a
   multiple of N; unreachable from caches built by this code. Proposed, not
   fixed.
+
+## 2026-10-19 — Phase 1 close-out
+
+- **State:** Phase 1 closed on CPU. Fixed: E3, E7, A9, A6, A3 + A8, A4 + A10,
+  A5, E10 + A11, E11 (except the torch pin), A1 + A2. Regression tests: A0,
+  gradient coverage, forward unchanged, DoD §2.5, §2.6. Table with commits in
+  issues.md §1 "Phase 1 close-out".
+- **Suite:** 199 passed, 1 skipped in 122.09 s (`qenv`, torch 2.14.1 CPU).
+- **Not done:** no T4 run, no ARC-Easy cache, no real training. A7 moves to
+  Tier 2 under provisional decision PD-2. A12 open (proposed).
+- **Next:** proposal for DoD §2.3, §2.7 and §2.2 logging (before any baseline
+  run), then the Step 6 T4 notebook and Phase 2.

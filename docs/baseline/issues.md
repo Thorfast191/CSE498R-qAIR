@@ -48,7 +48,7 @@ this repo decides.
    **A11** (found during A4): a resumed run is not RNG-continuous with an uninterrupted one. Proposed with E10.
 6. **A5** `input_ablation` rebuilds the wrong architecture without a saved config.
 7. **A1, A2** Parameters that never receive gradient. The fix approach (remove vs exclude from the optimizer) needs confirmation because of checkpoint compatibility (rule 9).
-8. **A7** Validator relevance target has no hypothesis axis. **Blocked: supervisor approval.** A candidate fix exists in the v47 patch.
+8. **A7** Validator relevance target has no hypothesis axis. **Blocked: supervisor approval.** A candidate fix exists in the v47 patch. *Provisional decision PD-2 (2026-10-19): an extra flagged arm in Tier 2, v46 target the default; the v47 patch is reference only.*
 9. Regression tests from E8: circuit input-dependence (A0, `8bfc7bb`) and gradient coverage (A1/A2, `4309bde`) (DoD §2.1–2.2). *Done.*
    Added: no label leakage (DoD §2.5) and option-shuffle alignment (DoD §2.6), `0997a99`. **A12** (found writing §2.6): latent shuffle misalignment when K is not a multiple of N; proposed, not fixed.
 
@@ -74,6 +74,52 @@ this repo decides.
 **Resolved by approved git step:** E1, E2 (for the baseline), E4 (partly; see entry).
 **Withdrawn:** B9.
 **Verified not present in v46:** A0.
+
+### Phase 1 close-out (2026-10-19)
+
+Phase 1 is closed except A7, which never was a Phase 1 fix: under
+provisional decision PD-2 (`supervisor_decisions.md`) it becomes an extra
+flagged arm in Tier 2 (Step 9), with the v46 target as the default. All
+work below is tested on CPU only (`qenv` venv: torch 2.14.1 CPU, PennyLane
+0.42.3, lightning 0.42.0); nothing has run on a T4 and no ARC-Easy cache
+exists yet.
+
+| Item | What it guarantees now | Fix / test commit |
+|---|---|---|
+| E3 | Seeded, per-batch-reseeded generation; seed and decoding config in the cache header | `b5c0ae8` |
+| E7 | Reading a cache never builds one (`allow_build=False`) | `6aa20a5` |
+| A9 | A failed cache load leaves the file untouched | `0313a15` |
+| A6 | Complete flag final; missing split raises; `score_failed` flag | `0a4f464` |
+| A3 + A8 | Run key `{arm}_{dataset}_s{seed}`; provenance-checked resume and best-checkpoint load; safe `torch.load` | `f605c55` |
+| A4 + A10 | History and early-stopping state survive a resume; a finished run is skipped | `4083ecf` |
+| A5 | `input_ablation` rebuilds the trained architecture or refuses | `b00595a` |
+| E10 + A11 | Deterministic mode on by default; resume restores every RNG stream | `bbea237` (CPU) |
+| E11 | Pins checked at startup, environment recorded and compared on resume | `4c4a766` (torch pin pending) |
+| A1 + A2 | No parameter without gradient outside a documented allowance; counts in every result; checkpoint format 3 | `4309bde` |
+| Regression: gradient coverage, forward unchanged (DoD §2.2 test part) | | `4309bde` |
+| Regression: A0 circuit input-dependence (DoD §2.1) | | `8bfc7bb` |
+| Regression: no label leakage (DoD §2.5), option-shuffle alignment (DoD §2.6) | | `0997a99` |
+
+Full suite at close: **199 passed, 1 skipped** (the real-Qwen test) in
+122.09 s.
+
+**Still open after Phase 1:**
+- **Step 6 T4 notebook** (not run): two same-seed 1-epoch runs with a
+  per-example prediction diff, printing any op that raises in strict
+  deterministic mode; `lightning.gpu` nondeterminism check; torch/CUDA,
+  `pip freeze`, `pip check`, uninstall diffusers/gradio/jax, then pin torch
+  (E10, E11).
+- **A12** (found writing the §2.6 test): latent shuffle misalignment when K
+  is not a multiple of N; proposed, not fixed.
+- **Before any baseline run** (decision 2026-10-19; proposed, awaiting
+  approval): DoD §2.3 collapse correctness, §2.7 per-epoch parameter drift,
+  §2.2 per-epoch per-module gradient norms.
+- **Phase 2:** E6 manifest, E5, E8, E9; then the ARC-Easy cache build.
+
+**Process incidents (both fixed forward with new commits, no force-push):**
+`7abc115` untracked three local files that `git add docs` had committed in
+`2dedcd8`; `38cdc0e` corrected docs commit `9c5f550`, which named the wrong
+A5 fix hash after a zsh word-splitting failure skipped the code commit.
 
 ---
 
@@ -418,7 +464,7 @@ this repo decides.
   substitution; batch zeros) each fail their test.
 
 ### A7 — v46 validator relevance target has no hypothesis axis *(new)*
-- **Category:** A · **Severity:** High · **Status:** open · **fix needs supervisor approval**
+- **Category:** A · **Severity:** High · **Status:** open · **fix needs supervisor approval** · provisional decision PD-2 (2026-10-19, `supervisor_decisions.md`): implement only as an extra arm behind a flag in Tier 2; the v46 target stays the default and the main baseline
 - **Evidence:** `models/validator.py:140-142`:
   ```python
   if y is not None:

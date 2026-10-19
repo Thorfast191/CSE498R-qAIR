@@ -553,7 +553,9 @@ $A_n = S_n + e^{i\rho}R_n$.
 
 #### A7 Validator relevance target has no hypothesis axis
 - **Category / severity / blocks:** A / High / blocks any claim about the validator
-  or the collapse; **fix needs supervisor approval**.
+  or the collapse; **fix needs supervisor approval**. Provisional decision PD-2
+  (2026-10-19, `supervisor_decisions.md`): an extra flagged arm in Tier 2 only;
+  the v46 target stays the default.
 - **Observation:** collapse entropy is within 0.003 nats of uniform (F3). This is
   consistent with, but not proof of, this cause.
 - **Location:** `models/validator.py:140-142`:
@@ -1647,6 +1649,15 @@ B8 (budget) ─→ C2 conclusions about ρ;  C6 ─→ C7
 4. **Phase 4:** D1, D2, D5 measurements on the full cache → D3, D4 (approval for
    any generation change).
 5. **Supervisor:** C1, C2 (option 2), C3–C7, A7.
+
+**Status 2026-10-19: Phase 1 closed on CPU.** Every Phase 1 item above is
+fixed except A7 (provisional decision PD-2: an extra flagged arm in Tier 2).
+The regression tests exist: A0 circuit (`8bfc7bb`), gradient coverage
+(`4309bde`), E3/E7 (`b5c0ae8`, `6aa20a5`), plus DoD §2.5 and §2.6
+(`0997a99`). Fix commits per item are in each section's Status line and in
+issues.md §1 "Phase 1 close-out". Not yet verified on a T4: E10
+determinism and the E11 torch pin (Step 6). New since this document: A9–A12
+(issues.md §10).
 
 ---
 
