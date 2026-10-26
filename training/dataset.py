@@ -1142,26 +1142,33 @@ def collate_fn(batch, shuffle_options=True):
 
         if shuffle_options:
 
+            # Mode-major layout: reorder each contiguous block of n
+            # hypotheses by the SAME permutation, so block b row i still
+            # refers to option i afterwards. Any other layout (a legacy or
+            # hand-built sample) cannot be shuffled without misaligning
+            # hypotheses and options, so it is refused (A12).
+            mode_major = torch.arange(n).repeat(k // n)
+
+            if k % n != 0 or not torch.equal(hyp_opt, mode_major):
+                raise ValueError(
+                    f"collate_fn cannot shuffle a sample whose hypotheses are "
+                    f"not in mode-major order (K={k}, N={n}, hyp_option="
+                    f"{hyp_opt.tolist()}): its hypotheses would point at the "
+                    f"wrong options. Caches built by this code are always "
+                    f"mode-major; pass shuffle_options=False for this sample."
+                )
+
             perm = torch.randperm(n)
 
             O = O[perm]
             llm_lp = llm_lp[perm]
 
-            # Mode-major layout: reorder each contiguous block of n
-            # hypotheses by the SAME permutation, so block b row i still
-            # refers to option i afterwards. Anything that isn't a clean
-            # multiple of n (a legacy or hand-built sample) is left
-            # alone rather than silently misaligned.
-            if k % n == 0:
+            idx = torch.cat([perm + block * n for block in range(k // n)])
 
-                idx = torch.cat([
-                    perm + block * n for block in range(k // n)
-                ])
-
-                H = H[idx]
-                fb = fb[idx]
-                pol = pol[idx]
-                hyp_opt = torch.arange(n).repeat(k // n)
+            H = H[idx]
+            fb = fb[idx]
+            pol = pol[idx]
+            hyp_opt = mode_major
 
             y = int((perm == y).nonzero(as_tuple=True)[0].item())
 

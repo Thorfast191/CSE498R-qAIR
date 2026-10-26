@@ -151,3 +151,50 @@ def test_cached_samples_stay_aligned(cached_samples):
 
         assert torch.equal(shuffled["O"][b, shuffled["y"][b]], s["O"][s["y"]])
         assert correct_option_rows(shuffled, b) == correct_option_rows(plain, b)
+
+
+# ---------------------------------------------------------------------------
+# A12: a layout that cannot be shuffled is refused, not misaligned
+# ---------------------------------------------------------------------------
+
+def k_not_multiple_of_n():
+    s = sample(4, 1)
+    keep = 6                                    # K = 6, N = 4
+    return {**s, "H": s["H"][:keep], "hyp_option": s["hyp_option"][:keep],
+            "polarity": s["polarity"][:keep], "is_fallback": s["is_fallback"][:keep]}
+
+
+def option_major():
+    s = sample(4, 1)
+    order = torch.arange(8).view(2, 4).t().reshape(-1)   # option-major rows
+    return {**s, "H": s["H"][order], "hyp_option": s["hyp_option"][order],
+            "polarity": s["polarity"][order], "is_fallback": s["is_fallback"][order]}
+
+
+@pytest.mark.parametrize("make", [k_not_multiple_of_n, option_major])
+def test_shuffling_refuses_a_non_mode_major_sample(make):
+    with pytest.raises(ValueError, match="mode-major"):
+        collate_fn([sample(3, 0), make()], shuffle_options=True)
+
+
+@pytest.mark.parametrize("make", [k_not_multiple_of_n, option_major])
+def test_unshuffled_non_mode_major_sample_keeps_its_alignment(make):
+    s = make()
+    batch = collate_fn([s], shuffle_options=False)
+    about = batch["align"][0, :s["H"].shape[0]].argmax(dim=1)
+
+    assert torch.equal(batch["O"][0, about, OPTION], s["H"][:, OPTION])
+
+
+def test_valid_samples_shuffle_exactly_as_before():
+    """The check draws no random numbers: the permutations are unchanged."""
+
+    torch.manual_seed(0)
+    batch = collate_fn(ragged_batch(), shuffle_options=True)
+
+    torch.manual_seed(0)
+    expected = [torch.randperm(o["O"].shape[0]) for o in ragged_batch()]
+
+    for b, perm in enumerate(expected):
+        n = perm.shape[0]
+        assert torch.equal(batch["O"][b, :n, OPTION], option_code(perm.float()))
