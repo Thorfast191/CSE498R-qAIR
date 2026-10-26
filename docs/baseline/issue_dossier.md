@@ -1657,7 +1657,9 @@ The regression tests exist: A0 circuit (`8bfc7bb`), gradient coverage
 (`0997a99`). Fix commits per item are in each section's Status line and in
 issues.md §1 "Phase 1 close-out". Not yet verified on a T4: E10
 determinism and the E11 torch pin (Step 6). New since this document: A9–A12
-(issues.md §10).
+(issues.md §10); A12 fixed 2026-10-27 in `59f4974`. DoD §2.3 test
+(`f355965`) and §2.2/§2.7 per-epoch logging (`402808e`) added before any
+baseline run.
 
 ---
 

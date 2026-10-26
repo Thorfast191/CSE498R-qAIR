@@ -50,7 +50,7 @@ this repo decides.
 7. **A1, A2** Parameters that never receive gradient. The fix approach (remove vs exclude from the optimizer) needs confirmation because of checkpoint compatibility (rule 9).
 8. **A7** Validator relevance target has no hypothesis axis. **Blocked: supervisor approval.** A candidate fix exists in the v47 patch. *Provisional decision PD-2 (2026-10-19): an extra flagged arm in Tier 2, v46 target the default; the v47 patch is reference only.*
 9. Regression tests from E8: circuit input-dependence (A0, `8bfc7bb`) and gradient coverage (A1/A2, `4309bde`) (DoD §2.1–2.2). *Done.*
-   Added: no label leakage (DoD §2.5) and option-shuffle alignment (DoD §2.6), `0997a99`. **A12** (found writing §2.6): latent shuffle misalignment when K is not a multiple of N; proposed, not fixed.
+   Added: no label leakage (DoD §2.5) and option-shuffle alignment (DoD §2.6), `0997a99`. **A12** (found writing §2.6): latent shuffle misalignment when K is not a multiple of N; fixed `59f4974`.
 
 **Phase 2 — remaining engineering**
 10. **E6** Run provenance manifest (commit, cache hash, versions, device, seed).
@@ -110,7 +110,7 @@ Full suite at close: **199 passed, 1 skipped** (the real-Qwen test) in
   `pip freeze`, `pip check`, uninstall diffusers/gradio/jax, then pin torch
   (E10, E11).
 - **A12** (found writing the §2.6 test): latent shuffle misalignment when K
-  is not a multiple of N; proposed, not fixed.
+  is not a multiple of N; fixed 2026-10-27 in `59f4974`.
 - **Before any baseline run** (decision 2026-10-19, approved): DoD §2.3
   collapse correctness (done, `f355965`), §2.7 per-epoch parameter drift and
   §2.2 per-epoch per-module gradient norms (done, `402808e`).
@@ -994,7 +994,7 @@ part of C2.
   1 skipped.
 
 ### A12 — Shuffling misaligns hypotheses when K is not a multiple of N
-- **Category:** A · **Severity:** Low (latent) · **Status:** **open, proposed; not fixed** (found 2026-10-19 while writing the DoD §2.6 test)
+- **Category:** A · **Severity:** Low (latent) · **Status:** **fixed 2026-10-27** in `59f4974` (found 2026-10-19 while writing the DoD §2.6 test; fix approved 2026-10-27)
 - **Evidence:** `training/dataset.py` `collate_fn`, `shuffle_options=True`:
   the options and LLM scores are always permuted, but when `k % n != 0` the
   hypotheses, `polarity`, `is_fallback` and `hyp_option` are left in their
@@ -1008,10 +1008,17 @@ part of C2.
   `training/dataset.py:318-340`]:** caches built by this code always have
   K = len(modes) × N in mode-major order, so `k % n == 0` and the path is not
   reached. Only a hand-built or legacy sample can reach it.
-- **Proposed fix (not implemented):** raise a `ValueError` when shuffling a
-  sample with `k % n != 0` (or whose `hyp_option` is not mode-major), instead
-  of returning misaligned tensors. One file plus a test case in
-  `tests/test_option_shuffle_alignment.py`.
+- **Fix:** `collate_fn` raises `ValueError` when asked to shuffle a sample
+  with `k % n != 0` or whose `hyp_option` is not mode-major. Unshuffled
+  batches still accept such samples (their alignment is correct). The check
+  runs before `randperm` and draws no random numbers, so valid batches
+  shuffle exactly as before.
+- **Test evidence:** `tests/test_option_shuffle_alignment.py` (+5 tests):
+  shuffling a K = 6, N = 4 sample and an option-major sample raises;
+  unshuffled, both stay aligned; a seeded shuffle of valid samples gives the
+  same permutations as `torch.randperm` from the same seed. Against the
+  pre-fix `dataset.py` 2 tests fail; checking only `k % n` fails 1. Full
+  suite: 234 passed, 1 skipped in 137.14 s.
 
 ### Regression tests DoD §2.5 and §2.6 (2026-10-19, `0997a99`)
 - **§2.5 no label leakage:** `tests/test_no_label_leakage.py`. For all 14

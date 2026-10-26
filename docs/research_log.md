@@ -318,3 +318,12 @@ fix commit cannot name itself.
   `python -m pytest tests -q` → 229 passed, 1 skipped in 141.59 s.
 - **Not done:** no T4 run; AMP skip counting is exercised only by the unit
   test (the scaler is disabled on CPU).
+
+## 2026-10-27 — A12: refuse to shuffle a non-mode-major sample
+
+- **Commit:** `59f4974`. Files: `training/dataset.py`,
+  `tests/test_option_shuffle_alignment.py`.
+- **Results:** shuffle test file 8 passed; pre-fix code fails 2 of the new
+  tests; `python -m pytest tests -q` → 234 passed, 1 skipped in 137.14 s.
+- **Effect on runs:** none for caches built by this code (always mode-major);
+  valid batches draw the same permutations as before.
