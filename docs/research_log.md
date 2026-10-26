@@ -304,3 +304,17 @@ fix commit cannot name itself.
 - **Results:** 22 passed; `python -m pytest tests -q` → 221 passed, 1 skipped
   in 122.99 s. 7 mutations fail ≥ 1 test; 3 single-mask removals are
   equivalent (redundant masking).
+
+## 2026-10-27 — DoD §2.2, §2.7: per-epoch gradient norms and parameter drift
+
+- **Commit:** `402808e`. Files: `training/diagnostics.py` (new),
+  `training/train.py`, `training/ablations.py`,
+  `tests/test_training_diagnostics.py` (new), `tests/test_determinism_resume.py`.
+- **Environment:** the scratch venv had been partly deleted by the temp
+  cleaner (`pyvenv.cfg` gone); rebuilt in this session's scratchpad with
+  Python 3.12, torch 2.14.1 CPU, `requirements.txt` pins (PennyLane 0.42.3,
+  lightning 0.42.0, transformers 4.52.4); `pip check` clean.
+- **Results:** 8 new tests pass; 10 mutations each fail ≥ 1 test;
+  `python -m pytest tests -q` → 229 passed, 1 skipped in 141.59 s.
+- **Not done:** no T4 run; AMP skip counting is exercised only by the unit
+  test (the scaler is disabled on CPU).

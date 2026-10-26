@@ -112,8 +112,8 @@ Full suite at close: **199 passed, 1 skipped** (the real-Qwen test) in
 - **A12** (found writing the §2.6 test): latent shuffle misalignment when K
   is not a multiple of N; proposed, not fixed.
 - **Before any baseline run** (decision 2026-10-19, approved): DoD §2.3
-  collapse correctness (done, `f355965`), §2.7 per-epoch parameter drift,
-  §2.2 per-epoch per-module gradient norms.
+  collapse correctness (done, `f355965`), §2.7 per-epoch parameter drift and
+  §2.2 per-epoch per-module gradient norms (done, `402808e`).
 - **Phase 2:** E6 manifest, E5, E8, E9; then the ARC-Easy cache build.
 
 **Process incidents (both fixed forward with new commits, no force-push):**
@@ -1049,6 +1049,42 @@ part of C2.
   second mask (`invalid` in `log_t`, the `weights` fill, the mask on r):
   equivalent mutants. Removing both option masks fails 7 tests.
 - Full suite: 221 passed, 1 skipped in 122.99 s.
+
+### DoD §2.2 and §2.7 per-epoch logging (2026-10-27, `402808e`)
+- **Change:** `training/diagnostics.py` (new), called from
+  `training/train.py` every epoch; values go into the history (saved in every
+  checkpoint and the run's history file) and three lines are printed.
+  - **§2.2:** per top-level module (`in_proj`, `reasoner`, `quantum`,
+    `validator`, `selector`, `fusion`, `collapse`, `interference`,
+    `phase_head`; parameters on the model itself under `model`), the mean and
+    max per-step L2 gradient norm, after unscaling and before clipping; the
+    total norm, the fraction of steps clipped at `GRAD_CLIP = 2.0` and the
+    number of AMP-skipped steps (excluded from the means). A missing gradient
+    counts as 0.
+  - **§2.7:** every 0-d parameter (phases, temperatures, gates; 13 in F0) and
+    its drift from the run's start; per top-level module the relative weight
+    change ‖W − W0‖ / ‖W0‖.
+  - W0 and the initial scalars are stored in the history once, at the run's
+    start, so a resume measures from the true start. W0 adds one copy of the
+    weights to each checkpoint and history file (≈ 4.2 MB for F0's 1,055,707
+    parameters in fp32 [DERIVED]). Grid result entries leave W0 out, so
+    `ablation_results.pt` does not grow by one copy per run.
+  - No checkpoint format change: any `.py` change already refuses resume
+    (A3 code fingerprint), and evaluation loading is unaffected.
+- **Test evidence:** `tests/test_training_diagnostics.py` (new, 8 tests):
+  hand-set gradients give the expected per-module mean/max, clipped fraction
+  and skipped count; drift and relative change on a hand-built model; W0 kept
+  on a second `start_of_run`; on a real 2-epoch run every key is logged every
+  epoch, the logged scalars and drift equal the checkpoint's values, the
+  `in_proj` change equals ‖W − W0‖/‖W0‖ recomputed from the checkpoint, the
+  three lines print once per epoch, and grid entries omit W0 while the run's
+  history file keeps it. Per step, √Σ module² equals the unclipped total
+  (rel 1e-4), with clipping active. `tests/test_determinism_resume.py` now
+  compares histories including the new keys and W0: resumed = uninterrupted.
+  Ten mutations (measure after clip, skip test inverted, no per-epoch reset,
+  line not printed, W0 overwritten on resume, drift from 0, absolute instead
+  of relative change, max = last, clipping not counted, W0 kept in the grid)
+  each fail ≥ 1 test. Full suite: 229 passed, 1 skipped in 141.59 s.
 
 ### Note for every training run
 **Always commit before starting a training run; the code fingerprint ignores untracked .py files.**
