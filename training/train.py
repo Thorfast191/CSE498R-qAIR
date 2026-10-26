@@ -10,9 +10,19 @@ from torch.amp import autocast, GradScaler
 from config import BASE_LR, NEW_LR, WEIGHT_DECAY
 
 from training.checkpoint import CHECKPOINT_FORMAT, is_finished
+from training.diagnostics import (
+    TOTAL,
+    GradNormTracker,
+    describe_drift,
+    describe_grad_norm,
+    parameter_drift,
+    start_of_run,
+)
 from training.seed import capture_rng_state
 from training.losses import compute_loss
 from training.evaluate import evaluate, batch_to_model
+
+GRAD_CLIP = 2.0
 
 
 class Trainer:
@@ -197,11 +207,19 @@ class Trainer:
             "ece": [],
         }
 
+        # W0 and the initial scalars, once per run; a resumed history
+        # already carries them (DoD §2.7).
+        start_of_run(history, self.model)
+
+        grad_tracker = GradNormTracker(self.model, GRAD_CLIP)
+
         for epoch in range(start_epoch, epochs):
 
             self.model.train()
 
             total_loss = 0.0
+
+            grad_tracker.reset()
 
             pbar = tqdm(
                 self.train_loader,
@@ -231,9 +249,15 @@ class Trainer:
 
                 self.scaler.scale(loss).backward()
                 self.scaler.unscale_(self.optim)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 2.0)
+                grad_norms = grad_tracker.measure()
+                grad_norms[TOTAL] = torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), GRAD_CLIP
+                ).item()
+                scale = self.scaler.get_scale()
                 self.scaler.step(self.optim)
                 self.scaler.update()
+                # A lowered scale means AMP found inf/NaN and skipped the step.
+                grad_tracker.add(grad_norms, skipped=self.scaler.get_scale() < scale)
 
                 total_loss += loss.item()
                 pbar.set_postfix({"loss": f"{loss.item():.4f}"})
@@ -250,6 +274,15 @@ class Trainer:
                       "interference_ratio", "phase_effect",
                       "destructive_fraction", "ece"):
                 history[k].append(metrics[k])
+
+            grad_norm, clipped, skipped = grad_tracker.summary()
+            scalars, drift, change = parameter_drift(self.model, history)
+            history["grad_norm"].append(grad_norm)
+            history["clipped_fraction"].append(clipped)
+            history["skipped_steps"].append(skipped)
+            history["scalars"].append(scalars)
+            history["scalar_drift"].append(drift)
+            history["weight_change"].append(change)
 
             print("\n" + "=" * 60)
             print(f"[{self.name}] Epoch {epoch+1}/{epochs}   "
@@ -280,6 +313,8 @@ class Trainer:
             # against ECE and the delta above.
             print(f"Coh contrast  : {metrics['coherent_contrast']:.4f} "
                   f"((max-min)/mean over options; rises under cancellation)")
+            print(describe_grad_norm(grad_norm, clipped, skipped))
+            print(describe_drift(drift, change))
 
             if self.verbose and hasattr(self.model, "fusion"):
                 # Blend weights exist only in the arms that use them (A2).

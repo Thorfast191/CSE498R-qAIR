@@ -21,6 +21,7 @@ from training.train import Trainer
 from training.checkpoint import (
     load_best, load_or_resume, run_key, run_provenance, training_config,
 )
+from training.diagnostics import INITIAL_WEIGHTS
 from training.evaluate import evaluate
 from training.runner import build_loaders
 from training.environment import check_pins, describe, write_package_list
@@ -321,7 +322,10 @@ def run_ablation_suite(
                     history["interference_ratio"][-1]
                     if history.get("interference_ratio") else None
                 ),
-                "history": history,
+                # W0 stays in the run's own history file and checkpoints;
+                # one copy per run would bloat the grid results.
+                "history": {k: v for k, v in history.items()
+                            if k != INITIAL_WEIGHTS},
                 "environment": describe(provenance),
                 "parameter_counts": provenance["parameter_counts"],
             }

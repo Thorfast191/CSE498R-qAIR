@@ -71,6 +71,18 @@ def assert_same_weights(a, b):
         assert torch.equal(a[k], b[k]), k
 
 
+def assert_same_history(a, b):
+    """Every metric equal, including the DoD §2.2/§2.7 diagnostics and W0."""
+    from training.diagnostics import INITIAL_WEIGHTS
+
+    assert a.keys() == b.keys()
+    for k in a:
+        if k == INITIAL_WEIGHTS:
+            assert_same_weights(a[k], b[k])
+        else:
+            assert a[k] == b[k], k
+
+
 # ---------------------------------------------------------------------------
 # E10: deterministic mode
 # ---------------------------------------------------------------------------
@@ -105,7 +117,7 @@ def test_same_seed_gives_identical_runs(tmp_path, smoke_cache):
     first = train(tmp_path / "a", smoke_cache, epochs=2)
     second = train(tmp_path / "b", smoke_cache, epochs=2)
 
-    assert first == second
+    assert_same_history(first, second)
 
     path_a = latest(tmp_path / "a", RUN)
     path_b = latest(tmp_path / "b", RUN)
@@ -183,7 +195,7 @@ def test_resumed_run_equals_uninterrupted(tmp_path, smoke_cache, monkeypatch):
     resumed = train(tmp_path / "resumed", smoke_cache)
 
     assert len(whole["loss"]) == 4
-    assert resumed == whole
+    assert_same_history(resumed, whole)
     assert_same_weights(weights(latest(tmp_path / "whole", RUN)),
                         weights(latest(tmp_path / "resumed", RUN)))
 
