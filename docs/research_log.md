@@ -348,3 +348,12 @@ fix commit cannot name itself.
   `python -m pytest tests -q` → 247 passed, 1 skipped in 142.45 s.
 - **Format change:** `ablation_results.pt` is now format 2 (dict with
   `results`); the v46 file still reads as format 1.
+
+## 2026-10-27 — E8: timed smoke run script
+
+- **Commit:** `6f99a49`. Files: `scripts/smoke_timing.py` (new),
+  `tests/test_smoke_timing.py` (new).
+- **Results:** 4 tests; 5 of 6 mutations fail ≥ 1 test (1 equivalent);
+  `python -m pytest tests -q` → 251 passed, 1 skipped in 143.26 s.
+- **Not done:** no real timing yet. The script has only run with fakes on
+  CPU; the T4 run is in the Step 6 notebook.

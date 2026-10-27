@@ -695,11 +695,27 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
   tests fail.
 
 ### E8 — No v45+ timing data; no tests
-- **Severity:** Medium · **Status:** open
+- **Severity:** Medium · **Status:** **fixed 2026-10-27** in `6f99a49` (script); tests exist since Phase 1. **Measurement pending:** the T4 run in the Step 6 notebook
 - **Evidence:** Only the v44 rate is recorded (`1.24s/it`, batch 16, K=4,
   `qAIR_v44.ipynb` cell 21); v46 tqdm bars were saved at 0%. No `tests/`.
   `models/full_model.py:317,348` runs the reasoner and circuit twice per forward
   pass when validator feedback is on.
+- **Fix:** `tests/` now has 251 tests (Phase 1, Step 5). `scripts/smoke_timing.py`
+  builds a cache of 20 train + 10 validation ARC-Easy questions (decision
+  2026-10-27) in a new directory and trains 1 epoch, timing generation,
+  scoring, embedding, model loading, train steps, evaluation and checkpoint
+  I/O by wrapping the real calls (CUDA-synchronized). It writes
+  `smoke_timing.json` with per-question and per-step rates and a [DERIVED]
+  projection: full cache (5197 questions), one epoch (141 steps + 570
+  validation questions) and a 20-epoch run. It refuses `config.CACHE_DIR`
+  and any directory that already holds a cache.
+- **Test evidence:** `tests/test_smoke_timing.py` (4 tests, fake generator and
+  encoder, real model): every stage timed with > 0 s, call counts, quantum
+  device and the 141-step projection; all wrappers removed afterwards; a
+  second run in the same directory and a run in `CACHE_DIR` are refused with
+  nothing generated. Five mutations fail ≥ 1 test; not restoring the
+  build-stage wrappers passes because the later restore of the same timer
+  reverts them (equivalent). Full suite: 251 passed, 1 skipped in 143.26 s.
 
 ### E9 — Stale docs and names
 - **Severity:** Low · **Status:** open

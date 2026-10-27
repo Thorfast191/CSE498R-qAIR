@@ -1108,6 +1108,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 
 #### E8 No v45+ timing data; no tests
 - **Category / severity / blocks:** E / Medium / cost planning; regression safety.
+- **Status:** **fixed 2026-10-27** in `6f99a49` (`scripts/smoke_timing.py`; tests exist); the T4 measurement is run in the Step 6 notebook.
 - **Observation:** v46 tqdm bars were saved at 0% (cell 27). The only rate on
   record is v44, `1.24s/it` [VERIFIED: `qAIR_v44.ipynb` cell 21 in the CSE499B
   clone]. No `tests/` directory.
