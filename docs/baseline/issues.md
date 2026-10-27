@@ -53,11 +53,19 @@ this repo decides.
    Added: no label leakage (DoD §2.5) and option-shuffle alignment (DoD §2.6), `0997a99`. **A12** (found writing §2.6): latent shuffle misalignment when K is not a multiple of N; fixed `59f4974`.
 
 **Phase 2 — remaining engineering**
-10. **E6** Run provenance manifest (commit, cache hash, versions, device, seed).
-11. **E5** `ablation_results.pt` overwritten per invocation.
-12. **E8** (rest) Timed 20-question smoke run on T4 to replace the cost assumptions; `tests/`.
-13. **E9** Stale docs and names.
+10. **E6** Run provenance manifest (commit, cache hash, versions, device, seed). *Fixed `eb855a2`.*
+11. **E5** `ablation_results.pt` overwritten per invocation. *Fixed `fa24deb`.*
+12. **E8** (rest) Timed 20-question smoke run on T4 to replace the cost assumptions; `tests/`. *Script `6f99a49`; T4 measurement in the Step 6 notebook.*
+13. **E9** Stale docs and names. *Fixed `6802e75`.*
 → Then **build the ARC-Easy cache**. This is a >1 h T4 run, so it needs your go-ahead (CLAUDE.md).
+
+**Phase 2 close-out (2026-10-27).** E6, E5, E8 (script) and E9 are fixed on CPU;
+full suite 256 passed, 1 skipped in 144.45 s. Not yet done on a T4: the
+smoke timing measurement (E8), the same-seed determinism runs and the
+`lightning.gpu` check (E10), the torch pin (E11) and the ARC-Easy cache build;
+all are in the Step 6 notebook. Defaults are now `ARC_CONFIG = "ARC-Easy"`,
+`EPOCHS = 20`; the capstone configuration needs
+`python main.py --arc-config ARC-Challenge --epochs 8` (plus its 80/20 data caps).
 
 **Phase 3 — evaluation (once the ARC-Easy cache exists)**
 14. **B4** LLM letter-pick baseline · **B5** majority-vote baseline.
@@ -114,7 +122,8 @@ Full suite at close: **199 passed, 1 skipped** (the real-Qwen test) in
 - **Before any baseline run** (decision 2026-10-19, approved): DoD §2.3
   collapse correctness (done, `f355965`), §2.7 per-epoch parameter drift and
   §2.2 per-epoch per-module gradient norms (done, `402808e`).
-- **Phase 2:** E6 manifest, E5, E8, E9; then the ARC-Easy cache build.
+- **Phase 2:** E6 manifest, E5, E8, E9 — closed 2026-10-27 (see Phase 2
+  close-out above); then the ARC-Easy cache build (Step 6).
 
 **Process incidents (both fixed forward with new commits, no force-push):**
 `7abc115` untracked three local files that `git add docs` had committed in
@@ -718,10 +727,30 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
   reverts them (equivalent). Full suite: 251 passed, 1 skipped in 143.26 s.
 
 ### E9 — Stale docs and names
-- **Severity:** Low · **Status:** open
+- **Severity:** Low · **Status:** **fixed 2026-10-27** in `6802e75`
 - **Evidence:** `evaluation/stats.py:4-7` (869 = merged-ARC validation);
   `training/runner.py:125,136` ("v45.1"); `scripts/build_cache.py:149`
   (`qair_v45_best.pt`); `docs/history/CLAUDE_v46.md` says "Current version: v45".
+- **Fix (decisions 2026-10-27):**
+  - stale statements of current behaviour fixed: the training banner
+    ("qAIR v46 baseline"), checkpoint names in `scripts/build_cache.py`,
+    `evaluation/input_ablation.py` and the README (`qair_ARC-Easy_s42_best.pt`),
+    the validation sizes in `evaluation/stats.py`, `training/ablations.py` and
+    `config.py` (ARC-Easy 570, SE up to ~2.1 points), the `QAIRvNext`
+    docstring version, the README benchmark table and defaults line;
+  - defaults changed: `ARC_CONFIG = "ARC-Easy"`, `EPOCHS = 20` (PD-7);
+    `main.py --epochs` added. Reproducing the capstone configuration needs
+    `python main.py --arc-config ARC-Challenge --epochs 8` (README, `config.py`,
+    CLAUDE.md); the capstone run also capped data at 80 train / 20 validation
+    in its notebook, which `main.py` does not expose;
+  - kept: the "v45:" history comments, historical measurements (e.g. 294/869
+    in `input_ablation.py`), the README's v45 sections (marked as history) and
+    `docs/history/CLAUDE_v46.md` (untouched, historical evidence).
+- **Test evidence:** `tests/test_defaults.py` (5 tests): config and both entry
+  points default to ARC-Easy / 20 / 5; the CLI passes the defaults and the
+  capstone flags in both modes; none of the fixed stale strings appears in
+  tracked code outside `tests/`. Five mutations each fail ≥ 1 test. Full
+  suite: 256 passed, 1 skipped in 144.45 s.
 
 ## D. Data / input problems
 

@@ -1129,6 +1129,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 
 #### E9 Stale docs and names
 - **Category / severity / blocks:** E / Low / readability.
+- **Status:** **fixed 2026-10-27** in `6802e75`; defaults now ARC-Easy and 20 epochs (issues.md E9).
 - **Observation / location:** `evaluation/stats.py:4-7` (869 = merged-ARC
   validation); `training/runner.py:125,136` ("v45.1");
   `scripts/build_cache.py:149` (`qair_v45_best.pt`);
@@ -1646,6 +1647,9 @@ B8 (budget) ─→ C2 conclusions about ρ;  C6 ─→ C7
    ARC-Easy cache (needs go-ahead).
    *Change:* E10 and E11 are placed with E6 because the manifest must record the
    determinism flag and the environment hash.
+   **Status 2026-10-27: Phase 2 closed on CPU** (E6 `eb855a2`, E5 `fa24deb`,
+   E8 script `6f99a49`, E9 `6802e75`); T4 measurements and the cache build are
+   in the Step 6 notebook.
 3. **Phase 3:** B4, B5 → B6 → B3, B7 → B11 (measurement) → full-split 3-seed
    runs (closes B1, B2, B8, B10).
    *Change:* B11 is measurement-only; it can ride along with the Phase-3 runs.

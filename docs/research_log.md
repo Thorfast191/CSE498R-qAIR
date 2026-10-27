@@ -357,3 +357,22 @@ fix commit cannot name itself.
   `python -m pytest tests -q` → 251 passed, 1 skipped in 143.26 s.
 - **Not done:** no real timing yet. The script has only run with fakes on
   CPU; the T4 run is in the Step 6 notebook.
+
+## 2026-10-27 — E9: stale names; ARC-Easy and 20 epochs as defaults
+
+- **Commit:** `6802e75`. Files: `config.py`, `main.py` (`--epochs`),
+  `training/runner.py`, `training/ablations.py`, `models/full_model.py`,
+  `evaluation/stats.py`, `evaluation/input_ablation.py`,
+  `scripts/build_cache.py`, `README.md`, `CLAUDE.md`, `tests/test_defaults.py`.
+- **Results:** 5 tests; 5 mutations each fail ≥ 1 test;
+  `python -m pytest tests -q` → 256 passed, 1 skipped in 144.45 s.
+- **Capstone configuration:** `python main.py --arc-config ARC-Challenge
+  --epochs 8` (the capstone also capped data at 80 / 20 in its notebook).
+
+## 2026-10-27 — Phase 2 close-out
+
+- **State:** E6, E5, E8 (script) and E9 fixed and tested on CPU; table of
+  commits in issues.md §1 "Phase 2 close-out". 256 passed, 1 skipped.
+- **Not done:** every T4 item (smoke timing, determinism pair,
+  `lightning.gpu` check, torch pin, ARC-Easy cache build) is for the Step 6
+  notebook. No real training has run.
