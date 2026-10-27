@@ -614,7 +614,25 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
   0-byte `cache/arc_train.pt` and `cache/arc_validation.pt` (main untouched).
 
 ### E5 — `ablation_results.pt` overwritten per invocation
-- **Severity:** Medium · **Status:** open · **Evidence:** `training/ablations.py:212,318`.
+- **Severity:** Medium · **Status:** **fixed 2026-10-27** in `fa24deb` · **Evidence:** `training/ablations.py:212,318`.
+- **Fix:** each (arm, seed) saves `{run}_result.pt` (`training/results.py`);
+  `ablation_results.pt` is rebuilt from every result file in the directory,
+  in format 2: `{"format": 2, "results": {arm: [entries by seed]},
+  "allow_mixed", "sources"}`. Result files whose manifests differ in code
+  fingerprint, uncommitted-diff hash or any cache file sha256 are refused
+  (`MixedResultsError`, listing each source and its runs) unless
+  `--allow-mixed` (decision 2026-10-27), which is recorded in the file and
+  printed with the results by the grid summary and `evaluation/stats.py`.
+  On refusal the new runs' result files are kept and the old combined file
+  is left as it was. `stats.py` still reads the v46 bare-dict file (format 1,
+  printed as "code version and caches unknown").
+- **Test evidence:** `tests/test_results_files.py` (8 tests): two separate
+  invocations both appear; re-running one (arm, seed) replaces only its
+  entry; a result file from other code or another cache is refused, the new
+  result file kept and the combined file unchanged; `allow_mixed` recorded
+  and the mixed note printed; stats reads formats 1 and 2; `--allow-mixed`
+  reaches the grid. Eight mutations each fail ≥ 1 test. Full suite: 247
+  passed, 1 skipped in 142.45 s.
 
 ### E6 — Run provenance not recorded
 - **Severity:** High · **Status:** **fixed 2026-10-27** in `eb855a2` (most fields already recorded by A3, E10, E11; the manifest completes and collects them)

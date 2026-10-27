@@ -1038,6 +1038,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 
 #### E5 `ablation_results.pt` is overwritten per invocation
 - **Category / severity / blocks:** E / Medium / chunked grid runs on Colab.
+- **Status:** **fixed 2026-10-27** in `fa24deb`: one result file per run; the combined file refuses mixed code or caches unless `--allow-mixed` (issues.md E5).
 - **Observation:** found by reading the code [VERIFIED: code].
 - **Location:** `training/ablations.py:212` (`results = {}`) and `:318`
   (`torch.save(results, os.path.join(ckpt_dir, "ablation_results.pt"))`).

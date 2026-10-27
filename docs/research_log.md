@@ -338,3 +338,13 @@ fix commit cannot name itself.
   `python -m pytest tests -q` → 239 passed, 1 skipped in 143.10 s.
 - **Process:** an unpushed first commit had 3 failures hidden by
   `pytest | tail`; fixed and amended before pushing.
+
+## 2026-10-27 — E5: per-run result files, refused mixing
+
+- **Commit:** `fa24deb`. Files: `training/results.py` (new),
+  `training/ablations.py`, `main.py` (`--allow-mixed`), `evaluation/stats.py`,
+  `tests/test_results_files.py` (new).
+- **Results:** 8 new tests; 8 mutations each fail ≥ 1 test;
+  `python -m pytest tests -q` → 247 passed, 1 skipped in 142.45 s.
+- **Format change:** `ablation_results.pt` is now format 2 (dict with
+  `results`); the v46 file still reads as format 1.
