@@ -26,7 +26,7 @@ import math
 
 import torch
 
-from training.checkpoint import load_checkpoint_file
+from training.results import load_combined, mixing_note
 
 
 def bootstrap_ci(records, n_boot=10000, alpha=0.05, seed=0):
@@ -87,7 +87,8 @@ def mcnemar(records_a, records_b):
 
 def compare_arms(results, baseline=None, alpha=0.05):
     """
-    results: the dict saved by training/ablations.py.
+    results: {arm: [entries]}, the "results" of the combined file saved
+    by training/ablations.py (training/results.py load_combined).
 
     Pools per-example test records across seeds for each arm. Pooling is
     valid for the paired comparison because every seed of every arm is
@@ -149,7 +150,11 @@ def main():
     parser.add_argument("--baseline", type=str, default=None)
     args = parser.parse_args()
 
-    compare_arms(load_checkpoint_file(args.results), baseline=args.baseline)
+    combined = load_combined(args.results)
+
+    print(mixing_note(combined))
+
+    compare_arms(combined["results"], baseline=args.baseline)
 
 
 if __name__ == "__main__":

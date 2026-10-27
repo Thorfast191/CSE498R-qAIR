@@ -56,6 +56,13 @@ def main():
              "(recorded in the provenance and printed with every result).",
     )
 
+    parser.add_argument(
+        "--allow-mixed", action="store_true",
+        help="--mode ablation: build ablation_results.pt even if the result "
+             "files come from different code or caches (recorded in the file "
+             "and printed with the results).",
+    )
+
     args = parser.parse_args()
 
     # set_seed lived in training/seed.py for the project's whole history
@@ -84,6 +91,7 @@ def main():
             configs=args.configs,
             deterministic_warn_only=args.deterministic_warn_only,
             ignore_pin_mismatch=args.ignore_pin_mismatch,
+            allow_mixed=args.allow_mixed,
         )
 
 

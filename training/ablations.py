@@ -26,6 +26,7 @@ from training.evaluate import evaluate
 from training.runner import build_loaders
 from training.environment import check_pins, describe, write_package_list
 from training.manifest import build_manifest, write_manifest
+from training.results import COMBINED_NAME, combine_results, mixing_note, save_result
 from training.seed import set_seed
 
 from models.full_model import QAIRvNext
@@ -196,9 +197,15 @@ def run_ablation_suite(
     val_samples=None,
     deterministic_warn_only=DETERMINISTIC_WARN_ONLY,
     ignore_pin_mismatch=False,
+    allow_mixed=False,
 ):
     """
     Runs every config under every seed.
+
+    Each (arm, seed) saves {run}_result.pt; ablation_results.pt is then
+    rebuilt from every result file in ckpt_dir (E5), and refused when they
+    come from different code or caches unless allow_mixed. Returns this
+    invocation's results.
 
     configs: optional iterable of ABLATIONS keys, for running a subset
     (a smoke run rarely wants all fourteen arms).
@@ -357,11 +364,16 @@ def run_ablation_suite(
                 entry["test_destructive"] = test_metrics["destructive_fraction"]
                 entry["test_records"] = records
 
+            save_result(ckpt_dir, run_name, name, entry)
+
             results.setdefault(name, []).append(entry)
 
-    summarize(results)
+    combined = combine_results(ckpt_dir, allow_mixed=allow_mixed)
 
-    torch.save(results, os.path.join(ckpt_dir, "ablation_results.pt"))
+    summarize(combined["results"])
+    print(mixing_note(combined))
+
+    torch.save(combined, os.path.join(ckpt_dir, COMBINED_NAME))
 
     return results
 
