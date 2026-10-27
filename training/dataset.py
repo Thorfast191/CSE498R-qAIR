@@ -126,6 +126,9 @@ class QAIRDataset(Dataset):
             cache_dir, cache_filename(split, self.arc_config)
         )
 
+        # Recorded in the run manifest (E6) with the file's sha256.
+        self.cache_path = cache_path
+
         resume_raw_index = 0
 
         is_complete = False

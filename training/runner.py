@@ -35,6 +35,7 @@ from training.checkpoint import (
 )
 from training.evaluate import evaluate
 from training.environment import check_pins, describe, write_package_list
+from training.manifest import build_manifest, write_manifest
 from training.seed import set_seed, seeded_generator
 
 from models.full_model import QAIRvNext
@@ -214,11 +215,19 @@ def run_training(
 
     write_package_list(os.path.join(ckpt_dir, f"{run_name}_env.txt"))
 
+    manifest = build_manifest(
+        provenance, run_name,
+        {"train": train_loader, "validation": val_loader, "test": test_loader},
+        model, device,
+    )
+    write_manifest(os.path.join(ckpt_dir, f"{run_name}_manifest.json"), manifest)
+
     state = load_or_resume(trainer, ckpt_dir, run_name, epochs, provenance)
 
     history = trainer.train_from(state, epochs, patience=patience)
 
     history["provenance"] = provenance
+    history["manifest"] = manifest
 
     config_path = os.path.join(ckpt_dir, f"{run_name}_config.pt")
     torch.save(
