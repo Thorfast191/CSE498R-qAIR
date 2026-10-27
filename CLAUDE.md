@@ -21,9 +21,10 @@ only as a backup patch (`~/qair_backup/v47_uncommitted.patch`) and must not
 be applied without supervisor approval. v46's previous project notes are in
 `docs/history/CLAUDE_v46.md`.
 
-Baseline dataset: ARC-Easy (`--arc-config ARC-Easy`). Do not build its cache
-until issues E3 (unseeded generation) and E7 (capped cache regenerating) in
-docs/baseline/issues.md are fixed.
+Baseline dataset: ARC-Easy, the default `ARC_CONFIG` since E9; `EPOCHS = 20`,
+`PATIENCE = 5` (PD-7). Reproducing the capstone configuration needs
+`--arc-config ARC-Challenge --epochs 8` (plus its 80/20 data caps). E3 and E7,
+which blocked the ARC-Easy cache build, are fixed.
 
 ## What this project is
 qAIR (Quantum-Augmented AI Reasoning) is a hybrid reasoning architecture for

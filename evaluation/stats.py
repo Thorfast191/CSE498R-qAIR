@@ -1,12 +1,12 @@
 """
 Statistical reporting for ablation comparisons.
 
-ARC's validation split has 869 examples, so a single run's accuracy
+ARC-Easy's validation split has 570 examples, so a single run's accuracy
 carries a standard error of roughly
 
-    sqrt(0.33 * 0.67 / 869) = 0.016
+    sqrt(0.33 * 0.67 / 570) = 0.020
 
-i.e. +/- 1.6 points at one sigma, +/- 3.2 at two. Most of the gaps this
+i.e. +/- 2.0 points at one sigma, +/- 3.9 at two. Most of the gaps this
 project's ablation grid produces are smaller than that. Reporting a
 single number per config -- as every result here did before the audit --
 cannot distinguish an effect from seed noise.

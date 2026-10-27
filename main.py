@@ -2,7 +2,7 @@ import argparse
 
 from config import (
     CACHE_DIR, CKPT_DIR, SEED, SEEDS, ARC_CONFIG, DETERMINISTIC,
-    DETERMINISTIC_WARN_ONLY,
+    DETERMINISTIC_WARN_ONLY, EPOCHS,
 )
 from training.seed import set_seed
 from training.runner import run_training
@@ -36,6 +36,12 @@ def main():
     parser.add_argument(
         "--arc-config", type=str, default=ARC_CONFIG,
         choices=["ARC-Challenge", "ARC-Easy", "merged"],
+    )
+
+    parser.add_argument(
+        "--epochs", type=int, default=EPOCHS,
+        help="Epoch cap (default config.EPOCHS = 20, PD-7). The capstone "
+             "configuration: --arc-config ARC-Challenge --epochs 8.",
     )
 
     parser.add_argument(
@@ -74,6 +80,7 @@ def main():
 
         run_training(
             seed=args.seed,
+            epochs=args.epochs,
             with_test=not args.no_test,
             arc_config=args.arc_config,
             deterministic_warn_only=args.deterministic_warn_only,
@@ -86,6 +93,7 @@ def main():
             cache_dir=CACHE_DIR,
             ckpt_dir=CKPT_DIR,
             seeds=tuple(args.seeds),
+            epochs=args.epochs,
             with_test=not args.no_test,
             arc_config=args.arc_config,
             configs=args.configs,

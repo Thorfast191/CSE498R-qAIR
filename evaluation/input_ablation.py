@@ -27,7 +27,7 @@ collapses with `llm_logprob := zeros` is a wrapper around its own
 generator, and reporting it as multi-hypothesis reasoning would be the
 same category of error the v44 audit found, one level up.
 
-    python -m evaluation.input_ablation --ckpt ckpt/qair_v45_best.pt
+    python -m evaluation.input_ablation --ckpt ckpt/qair_ARC-Easy_s42_best.pt
 """
 
 import argparse

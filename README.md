@@ -24,7 +24,9 @@ qAIR-vNext is a research framework that replaces single-path LLM reasoning with:
 
 Instead of reasoning through a single sequential trajectory, qAIR-vNext keeps all hypotheses "in play" simultaneously and only combines them at the very end, weighted — and phased — by how much the model trusts each one.
 
-This README documents what the code actually does, end to end. Benchmark: **ARC-Challenge** (not merged with ARC-Easy — see [Benchmarks](#-benchmarks)).
+This README documents what the code actually does, end to end. Benchmark: **ARC-Easy** by default since the CSE498R baseline phase; the capstone used **ARC-Challenge** (never merged — see [Benchmarks](#-benchmarks)).
+
+> **CSE498R baseline phase (Oct 2026).** The code is the capstone v46 architecture on branch `baseline`, with the fixes tracked in [`docs/baseline/issues.md`](docs/baseline/issues.md). Defaults changed: `ARC_CONFIG = "ARC-Easy"` and `EPOCHS = 20` with early stopping (patience 5), the pre-registered protocol in [`docs/baseline/supervisor_decisions.md`](docs/baseline/supervisor_decisions.md) (PD-7, PD-10). **Reproducing the capstone configuration now needs `python main.py --arc-config ARC-Challenge --epochs 8`**; the capstone run also capped the data at 80 train / 20 validation questions in its notebook. The v45 sections below are kept as history.
 
 > **⚠️ v45 is the current release. Start with [what v45 changed](#-v45--what-changed-and-why). Every quantum and ablation number produced before v45 is void, and the [v44 audit](#-v44-audit--what-was-broken-and-what-changed) below explains why.**
 
@@ -397,7 +399,7 @@ flowchart TD
 
 The final step is a **coherent** sum, not a weighted average: hypothesis amplitudes are added *before* squaring, so their relative phases decide whether they reinforce or cancel. The decohered special case `Σₖ |cₖ|²|vₖₙ|²` — a plain mixture over hypotheses, which is what v44 computed — is available as `phase_mode="classical"` and is the control the interference claim is measured against.
 
-> **Every claim here is falsifiable by one command.** Run `python -m evaluation.input_ablation --ckpt ckpt/qair_v45_best.pt` — it exits non-zero if corrupting the hypotheses doesn't cost accuracy, and it reports **per channel**, so a model that survives `H := zeros` but collapses on `llm_logprob := zeros` is identified as a wrapper around its own generator rather than a reasoner.
+> **Every claim here is falsifiable by one command.** Run `python -m evaluation.input_ablation --ckpt ckpt/qair_ARC-Easy_s42_best.pt` — it exits non-zero if corrupting the hypotheses doesn't cost accuracy, and it reports **per channel**, so a model that survives `H := zeros` but collapses on `llm_logprob := zeros` is identified as a wrapper around its own generator rather than a reasoner.
 
 ---
 
@@ -509,7 +511,7 @@ flowchart LR
 - **Label smoothing is applied over valid options only.** `F.cross_entropy(..., label_smoothing=ε)` spreads `ε/N` across *all* columns including zero-padded ones, and since `full_model` masks those to `-inf`, the loss returns `inf` on any batch containing a 3-option question. ARC-Challenge has those, so this is not hypothetical.
 - The quantum layer is force-run outside autocast in fp32 — PennyLane's autograd isn't mixed-precision safe on either `lightning.qubit` or `lightning.gpu` (cuStateVec uses fp32/fp64 statevectors, not fp16/bf16), so only that submodule pays the fp32 cost, regardless of which one is attached. The Cayley solve is likewise fp32 (`torch.linalg.solve` has no half-precision kernel on several backends, and the matrices are `K×K` with `K ≤ 10`).
 - All of this is centralized in [`config.py`](config.py) — widths, `n_qubits`, `persistent_steps`, LRs, batch size, epochs, patience, phase mode, mixing mode, and cache/checkpoint directories are defined once and imported everywhere.
-- **Current defaults (v45):** `ARC_CONFIG="ARC-Challenge"`, `MODEL_DIM=128`, `batch_size=16`, `epochs=30`, `patience=5`, `n_qubits=6`, `persistent_steps=3`, `dropout=0.15`, `weight_decay=5e-2`, `label_smoothing=0.05`, `phase_mode="learned"`, `phase_source="circuit"`, `mixing="orthogonal"`, `seed=42`, `SEEDS=(42..46)`.
+- **Current defaults (CSE498R baseline):** `ARC_CONFIG="ARC-Easy"`, `MODEL_DIM=128`, `batch_size=16`, `epochs=20`, `patience=5`, `n_qubits=6`, `persistent_steps=3`, `dropout=0.15`, `weight_decay=5e-2`, `label_smoothing=0.05`, `phase_mode="learned"`, `phase_source="circuit"`, `mixing="orthogonal"`, `seed=42`, `SEEDS=(42..46)`.
 
 ---
 
@@ -561,8 +563,8 @@ qAIR-CSE499B/
 
 | Benchmark      | Status | Split sizes (train/val/test) | Purpose |
 | --- | --- | --- | --- |
-| **ARC-Challenge** | ✅ **default** | 1,119 / 299 / 1,172 | Grade-school science reasoning |
-| ARC-Easy       | ✅ opt-in | 2,251 / 570 / 2,376 | — |
+| ARC-Challenge  | ✅ opt-in (capstone) | 1,119 / 299 / 1,172 | Grade-school science reasoning |
+| **ARC-Easy**   | ✅ **default** (CSE498R baseline) | 2,251 / 570 / 2,376 | Grade-school science reasoning, easier set |
 | `merged`       | ⚠️ opt-in | 3,370 / 869 / 3,548 | training volume only |
 | GSM8K          | 🔲 Planned | — | Multi-step math reasoning |
 | CommonsenseQA  | 🔲 Planned | — | Commonsense reasoning |
@@ -571,7 +573,7 @@ qAIR-CSE499B/
 
 **Why v45 stopped merging Challenge with Easy.** Every earlier version merged them to triple the training pool. That is not defensible as a reporting practice: published ARC numbers are always per config, so a merged number is comparable to nothing in the literature; the two configs have very different difficulty distributions, so every measured effect is confounded with the mixture ratio; and nothing in the pipeline recorded which benchmark a cached sample came from, so the mixture could not be reported after the fact. Set `ARC_CONFIG = "merged"` if you want the volume for training — every sample now carries a `source` field and `training/evaluate.py::accuracy_by_source` breaks the result back out per benchmark — but say so in any write-up.
 
-The cost of the switch is honest: ARC-Challenge validation is **299 examples**, so the standard error on a single accuracy is ~2.7 points. Multi-seed runs and paired tests are not optional here.
+The cost of the switch is honest: ARC-Challenge validation is **299 examples**, so the standard error on a single accuracy is ~2.7 points. Multi-seed runs and paired tests are not optional here. (ARC-Easy, the baseline default since Oct 2026, has 570 validation examples: SE up to ~2.1 points.)
 
 ---
 

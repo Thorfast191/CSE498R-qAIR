@@ -210,8 +210,8 @@ def run_ablation_suite(
     configs: optional iterable of ABLATIONS keys, for running a subset
     (a smoke run rarely wants all fourteen arms).
 
-    Single-run differences on ARC-Challenge's 299-example validation
-    split carry a standard error around 2.7 points, so the 1-3 point gaps
+    Single-run differences on ARC-Easy's 570-example validation split
+    carry a standard error up to about 2.1 points, so the 1-3 point gaps
     this grid produces are indistinguishable from seed noise when each
     config is trained once. Results are aggregated as mean +/- std across
     seeds, and per-example test records are kept so evaluation/stats.py

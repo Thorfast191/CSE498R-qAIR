@@ -151,7 +151,7 @@ def run_training(
     pin_check = check_pins(override=ignore_pin_mismatch)
 
     print("=" * 60)
-    print(f"qAIR-v45.1 TRAINING  ({arc_config})  run {run_name}")
+    print(f"qAIR v46 baseline TRAINING  ({arc_config})  run {run_name}")
     print("=" * 60)
 
     set_seed(seed, deterministic=DETERMINISTIC, warn_only=deterministic_warn_only)

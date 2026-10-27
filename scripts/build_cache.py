@@ -1,7 +1,7 @@
 """
 Build the hypothesis/embedding cache for one or more ARC splits.
 
-This is the slow, ONE-TIME step. Once `cache/arc_challenge_{split}.pt`
+This is the slow, ONE-TIME step. Once `cache/arc_easy_{split}.pt`
 exists, every training run loads it instantly and never touches the LLM
 again. Rerun only if `config.EMBEDDING_DIM`/`EMBEDDING_MODEL` changes
 (the dim guard in training/dataset.py refuses a stale cache), if the
@@ -50,8 +50,10 @@ from config import (  # noqa: E402
     ARC_SPLIT_SIZES,
     GEN_MODES,
     GEN_SEED,
+    SEED,
     resolve_device,
 )
+from training.checkpoint import run_key  # noqa: E402
 from training.dataset import QAIRDataset  # noqa: E402
 
 
@@ -163,7 +165,8 @@ def main():
         "\nNext:\n"
         "  python -m evaluation.baselines --mode all\n"
         "  python main.py --mode train\n"
-        "  python -m evaluation.input_ablation --ckpt ckpt/qair_v45_best.pt\n"
+        f"  python -m evaluation.input_ablation --ckpt "
+        f"ckpt/{run_key('qair', args.arc_config, SEED)}_best.pt\n"
     )
 
 

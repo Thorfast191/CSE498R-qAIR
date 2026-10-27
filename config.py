@@ -51,7 +51,11 @@ def resolve_device():
 # Challenge cache and a merged cache cannot silently be mistaken for
 # each other -- which is exactly what would have happened with the old
 # flat "arc_train.pt" name.
-ARC_CONFIG = "ARC-Challenge"  # "ARC-Challenge" | "ARC-Easy" | "merged"
+#
+# CSE498R baseline phase: ARC-Easy is the default (supervisor direction,
+# Oct 2026; docs/baseline/issues.md E9). The capstone configuration needs
+# `python main.py --arc-config ARC-Challenge --epochs 8`.
+ARC_CONFIG = "ARC-Easy"  # "ARC-Challenge" | "ARC-Easy" | "merged"
 
 ARC_SPLIT_SIZES = {
     "ARC-Challenge": {"train": 1119, "validation": 299, "test": 1172},
@@ -273,7 +277,10 @@ USE_LLM_PRIOR = True
 # ==========================================================
 
 BATCH_SIZE = 16
-EPOCHS = 30
+# Pre-registered protocol (provisional decisions PD-7 / PD-10,
+# docs/baseline/supervisor_decisions.md): at most 20 epochs, early stopping
+# on validation accuracy with patience 5. The capstone v46 run used 8.
+EPOCHS = 20
 PATIENCE = 5
 
 BASE_LR = 5e-4
@@ -294,9 +301,10 @@ SEED = 42
 DETERMINISTIC = True
 DETERMINISTIC_WARN_ONLY = False
 
-# Seeds for the multi-seed evaluation protocol. Single-run differences on
-# ARC-Challenge's 299-example validation split have SE ~2.7pt, so 1-3
-# point gaps between ablation arms are indistinguishable from seed noise.
+# Seeds for the multi-seed evaluation protocol. Single-run accuracy on
+# ARC-Easy's 570-example validation split has SE up to ~2.1pt
+# (sqrt(0.25/570)), so 1-3 point gaps between ablation arms are
+# indistinguishable from seed noise.
 SEEDS = (42, 43, 44, 45, 46)
 
 CACHE_DIR = "./cache"

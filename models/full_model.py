@@ -42,7 +42,7 @@ def _masked_zscore(x, mask, eps=1e-5):
 
 class QAIRvNext(nn.Module):
     """
-    qAIR-v45.
+    qAIR v46, the capstone architecture (the CSE498R baseline).
 
         Q, H, O  ->  in_proj (384 -> MODEL_DIM)
                  ->  PersistentReasoner        (orthogonal mixing)
