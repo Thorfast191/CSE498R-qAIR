@@ -617,11 +617,35 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
 - **Severity:** Medium · **Status:** open · **Evidence:** `training/ablations.py:212,318`.
 
 ### E6 — Run provenance not recorded
-- **Severity:** High · **Status:** open
+- **Severity:** High · **Status:** **fixed 2026-10-27** in `eb855a2` (most fields already recorded by A3, E10, E11; the manifest completes and collects them)
 - **Evidence:** `training/runner.py:189-205` saves no commit, cache hash, dataset
   revision or package versions; ablation runs save no config (A5).
   `requirements.txt:1` leaves `torch` unpinned; the circuit device is `"auto"`
   (`config.py:141`).
+- **Fix:** `training/manifest.py` writes `{run}_manifest.json` (plain JSON)
+  when a run starts, in `--mode train` and in the grid, and the returned
+  history carries it as `history["manifest"]`. Fields: git commit, `dirty`
+  flag, code fingerprint and diff hash; for every cache file used, its path,
+  file sha256, the sha256 of the samples used, the header file and the
+  generation provenance (gen seed, generator + revision, prompt hash,
+  generation config, device/library segments); dataset name, config and split
+  sizes; seed; deterministic flags and `CUBLAS_WORKSPACE_CONFIG`; torch
+  device and GPU name; the quantum device actually used (`None` for arms
+  without a circuit); compared and recorded package versions with the
+  pip-freeze hash and pin check; model and training config; parameter
+  counts. Record only: resume checks are unchanged. No timestamp, so
+  same-seed and resumed runs keep bit-identical histories (E10).
+- **Test evidence:** `tests/test_manifest.py` (5 tests): every field present
+  and equal to the history's; commit = `git rev-parse HEAD`; dirty flag set by
+  an uncommitted `.py` change in a temp repo; each cache's `file_sha256`
+  equals a direct sha256 of the file, its header equals the header file and
+  its generation record equals the cache's provenance; a grid arm without a
+  circuit records `quantum_device = None`. Six mutations each fail ≥ 1 test.
+  Full suite: 239 passed, 1 skipped in 143.10 s.
+- **Process note:** the first commit (`fa17749`, never pushed) went in with
+  3 failing determinism tests because a piped `pytest | tail` hid the exit
+  code. The cause was a `created_utc` timestamp that made same-seed histories
+  differ; it was removed and the unpushed commit amended to `eb855a2`.
 
 ### E7 — A capped cache can silently restart hours of LLM generation
 - **Severity:** Medium→High for the cache build · **Status:** **fixed** in `6aa20a5` · **Phase 1, item 2**

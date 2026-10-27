@@ -1055,6 +1055,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 
 #### E6 Run provenance not recorded
 - **Category / severity / blocks:** E / High / makes A8-type errors undetectable.
+- **Status:** **fixed 2026-10-27** in `eb855a2`: `{run}_manifest.json` per run (details in issues.md E6).
 - **Observation:** the v46 run's commit is known only because the clone cell
   printed it (cell 6). Nothing in the checkpoint or history records it, and
   nothing records the cache or its build [VERIFIED: `ckpt/qair_v46_config.pt`

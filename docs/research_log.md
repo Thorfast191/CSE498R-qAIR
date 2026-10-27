@@ -327,3 +327,14 @@ fix commit cannot name itself.
   tests; `python -m pytest tests -q` → 234 passed, 1 skipped in 137.14 s.
 - **Effect on runs:** none for caches built by this code (always mode-major);
   valid batches draw the same permutations as before.
+
+## 2026-10-27 — E6: run manifest
+
+- **Commit:** `eb855a2`. Files: `training/manifest.py` (new),
+  `training/runner.py`, `training/ablations.py`, `training/dataset.py`
+  (keeps `cache_path`), `tests/test_manifest.py` (new).
+- **Environment:** `qenv` rebuilt 2026-10-27 (torch 2.14.1 CPU, pins).
+- **Results:** 5 new tests; 6 mutations each fail ≥ 1 test;
+  `python -m pytest tests -q` → 239 passed, 1 skipped in 143.10 s.
+- **Process:** an unpushed first commit had 3 failures hidden by
+  `pytest | tail`; fixed and amended before pushing.
