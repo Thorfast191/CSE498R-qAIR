@@ -105,10 +105,36 @@ drift, per-module gradient norms.
 - Always commit before starting a training run; the code fingerprint ignores
   untracked .py files (checkpoint provenance, A3).
 
+## Working arrangement (from 2026-10-28)
+Claude Code builds; a reviewer (Claude on claude.ai) reads this repo from
+GitHub; the user runs Colab and decides. `docs/HANDOFF.md` is updated at the
+END of every session and committed and pushed last: last updated (date,
+commit); done this session (items, commits, test counts); decisions needed
+(numbered, with a recommendation); next step; the exact Colab cells or
+commands the user must run. Under one screen.
+
+## Standing approval policy
+PROCEED WITHOUT ASKING (still test, commit, push, and log in
+`docs/HANDOFF.md`) when ALL of these hold:
+- the change implements an item already specified in `docs/baseline/issues.md`,
+  `docs/baseline/improvement_plan.md` or the step prompts
+  (`docs/prompts/PROMPTS_steps_3_to_11.md`);
+- tests are added or kept and the full suite passes (check pytest's exit code);
+- v46 stays the default;
+- no forward-pass change unless verified bit-identical;
+- no data touched, nothing deleted, no force-push;
+- no GPU run over 1 hour.
+
+STOP AND ASK for: objective or architecture changes (A7, C-items, the first
+implementation of a new arm); changes to the statistics or a success
+criterion; anything contradicting a PD-decision or this file; history
+rewrites; anything uncertain.
+
 ## Ask me before
-changing pipeline order or adding/removing a stage; changing the dataset or
-splits; breaking checkpoint compatibility; touching more than 3 files in one
-change; any run over ~1 hour on T4; any category C change.
+the STOP cases above, and: changing pipeline order or adding/removing a
+stage; changing the dataset or splits; breaking checkpoint compatibility;
+any run over ~1 hour on T4; any category C change. Touching more than 3
+files needs approval only in the STOP cases.
 
 ## Code style
 Modular, descriptive names, one responsibility per function, no duplicate logic,
