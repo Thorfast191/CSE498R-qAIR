@@ -3,41 +3,42 @@
 Builder: Claude Code · Reviewer: Claude on claude.ai (reads GitHub) · Runs
 and decisions: the user. Updated at the end of every session (CLAUDE.md).
 
-**Last updated:** 2026-10-28 · code at the commit after `10f37d6` (this file's commit)
+**Last updated:** 2026-10-28 · main (`baseline` → `cse498r/main`) at `6f28f31` · **review branch `e12-torch-statevector` at `c0c6b2d`** (not merged)
+
+## For the reviewer: E12 branch
+`https://github.com/Thorfast191/CSE498R-qAIR/tree/e12-torch-statevector`, two commits on top of `81015be`:
+- **`7960dc5` (code):**
+  - New `models/statevector.py`.
+  - `config.QUANTUM_SIMULATOR = "torch"` is the default; `"pennylane"` stays as the reference and fallback.
+  - The quantum layer gains the switch, and `t4_checks` compares and times both engines.
+  - Tests: `tests/test_torch_statevector.py` (outputs and gradients, float64 ≤ 1e-6 and float32 ≤ 1e-5, all 16 arms) and A0 under both engines, plus the determinism and v46 bit-identical forward tests on the default.
+- **`c0c6b2d` (docs):**
+  - README and dossier: both engines are exact classical simulations of the same circuit.
+  - issues.md E12: the CPU-vs-T4 finding.
+- **Branch suite:** 339 passed, 2 skipped.
 
 ## Canonical Tier 0 cache (ARC-Easy)
-Built at commit `44fc12a`, session `20261028_135552_44fc12a`, gen_seed 0. Drive: `qAIR_CSE498R/cache/arc_easy/`. Manifest: `runs/20261028_135552_44fc12a/cache_manifest.json`.
+Built at commit `44fc12a`, session `20261028_135552_44fc12a`, gen_seed 0. Manifest: `runs/20261028_135552_44fc12a/cache_manifest.json`.
 
-| Split | n | complete | sha256 (prefix) |
-|---|---|---|---|
-| train | 2251 | True | `4bc0031289a03e4f` |
-| validation | 570 | True | `0760535c445ad6dc` |
-| test | 2376 | True | `5faa6d62c82612d6` (never gated) |
-
-**Gate finding** (train / val; dossier D1, D5): support 0.335 / 0.330 is above chance (z +9.3 / +4.4). Attack 0.180 / 0.172 is **below** chance (z −7.6 / −4.3), with implied η ≈ 0.9. The margin 0.255 / 0.251 is **at chance**, and validation's 143/570 is below the Tier 1 gate threshold of 164. LLM likelihood is 0.572 / 0.583.
+| Split | n | sha256 (prefix) |
+|---|---|---|
+| train | 2251 | `4bc0031289a03e4f` |
+| validation | 570 | `0760535c445ad6dc` |
+| test | 2376 | `5faa6d62c82612d6` (never gated) |
 
 ## Done this session
 | Item | Commit | Tests |
 |---|---|---|
-| E12 profile; weight-change floor; quantum check records devices and timing | `9b9c302` | 284 passed |
-| B4, B5, B7 | `62a1800` | real-Qwen slow test passed |
-| B3 | `63156e2` | 304 passed, 2 skipped |
-| Gate finding recorded (dossier D1/D5, issues, plan, log); `scripts/gate_significance.py` | this commit | 308 passed, 2 skipped |
-
-## Training speed (E12, the Step 7 blocker): fix ready, waiting for approval
-- **Cause:** on CPU, 98 % of a step is PennyLane running 512 per-row circuits; the rest of the model takes 19 ms.
-- **Fix:** the torch statevector is implemented and tested, **uncommitted** (local worktree; the patch applies cleanly to main).
-- **Accuracy:** it matches PennyLane ≤ 1e-6 (float64) and ≤ 1e-5 (float32) on outputs and gradients, and across all 16 arms.
-- **Speed (CPU):** 0.033 s vs 0.75 s per step.
-- **T4:** to be measured after the commit; estimate 0.05–0.15 s/step [HYPOTHESIS], versus 69.9 s measured.
+| E12 pushed as a review branch | `7960dc5`, `c0c6b2d` (branch) | 339 passed (branch) |
+| B6 (PD-14 families); PD-14, PD-15 recorded; B5 note (support-only = exploratory) | `6f28f31` | 319 passed, 2 skipped (main) |
 
 ## Decisions needed
-1. **E12: approve the commit** with `QUANTUM_SIMULATOR = "torch"` as the default (recommended). I can push the review branch `e12-torch-statevector` first if the reviewer wants to read it.
-2. **B6 statistics** (spec in the previous HANDOFF, `10f37d6`): McNemar per seed; item-level paired bootstrap averaging the 3 seeds; Holm over {v46, F0, P0, P1} × {option likelihood, letter pick}; PD-11's 3-seed rule reported alongside.
-3. **Tier 1 order:** move T1c (attack verification) first? This changes the pre-registered staging (PD-3). Recommended, given the finding.
+1. **Merge E12** once the reviewer has read the branch. I'll merge it into `baseline` with a merge commit (no rebase of the pushed branch, no force).
 
 ## Next step
-After decision 1: commit E12, then a T4 smoke timing at the new commit. After decision 2: B6. Then the Step 7 Colab section, with a measured time estimate.
+After the merge:
+1. You run a T4 smoke timing (cells 0–7) at the merge commit, which measures the real step time.
+2. I write the Step 7 Colab section (v46/A3, F0, P0, P1 × seeds 0/1/2 plus the baselines on test, then `stats.py` with the PD-14 families) with a T4 time estimate from that smoke run, and ask before you run it.
 
 ## Colab (now)
-Nothing to run until E12 is committed. Then: a fresh runtime, `PINNED_COMMIT` = the E12 commit, run cells 0–7, and paste cell 4's timing and cell 7's two verdict lines.
+Nothing until the merge. Then use a fresh runtime with `PINNED_COMMIT` set to the merge commit, run cells 0–7, and paste cell 4's timing, cell 6's lines and cell 7's two verdict lines.
