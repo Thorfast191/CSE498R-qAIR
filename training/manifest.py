@@ -93,6 +93,7 @@ def build_manifest(provenance, run_name, loaders, model, device):
         "device_name": device_name(device),
         # Only quantum arms have a circuit; the classical-control layer
         # and the no-bottleneck arms record None.
+        "quantum_simulator": provenance["quantum_simulator"],
         "quantum_device": getattr(getattr(model, "quantum", None), "device_name", None),
         # Why lightning.gpu was not used, when QUANTUM_DEVICE="auto" fell
         # back to lightning.qubit (None otherwise).

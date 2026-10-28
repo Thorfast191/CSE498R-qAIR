@@ -188,6 +188,9 @@ def run_provenance(arm, arc_config, seed, model_config, train_config,
         "environment_info": environment_info,
         "pin_check": pin_check,
         "parameter_counts": model.parameter_counts(),
+        # Which engine simulates the circuit (E12): compared on resume, so a
+        # run never continues under the other engine. None without a circuit.
+        "quantum_simulator": getattr(getattr(model, "quantum", None), "simulator", None),
         "device": str(device),
         "cublas_workspace_config": os.environ.get("CUBLAS_WORKSPACE_CONFIG"),
     }

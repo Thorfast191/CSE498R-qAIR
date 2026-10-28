@@ -214,3 +214,41 @@ def test_grid_arm_does_not_depend_on_earlier_arms(tmp_path, smoke_cache):
     alone = grid(tmp_path / "alone", ["A2_validator"])
 
     assert after_a1["A2_validator"][0]["history"] == alone["A2_validator"][0]["history"]
+
+
+# ---------------------------------------------------------------------------
+# E12: the circuit engine is part of the run
+# ---------------------------------------------------------------------------
+
+def interrupted_in_epoch_2(tmp_path, smoke_cache, monkeypatch):
+    """A 2-epoch run that disconnects during its second validation."""
+
+    restore = interrupt_validation_at(monkeypatch, 1)
+    with pytest.raises(Interrupted):
+        train(tmp_path, smoke_cache, epochs=2)
+    restore()
+
+
+def test_resume_under_the_other_circuit_engine_refuses(tmp_path, smoke_cache, monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, "QUANTUM_SIMULATOR", "pennylane")
+    interrupted_in_epoch_2(tmp_path, smoke_cache, monkeypatch)
+    saved = load_checkpoint_file(latest(tmp_path, RUN))["provenance"]
+    assert saved["quantum_simulator"] == "pennylane"
+
+    monkeypatch.setattr(config, "QUANTUM_SIMULATOR", "torch")
+    with pytest.raises(CheckpointMismatchError) as refused:
+        train(tmp_path, smoke_cache, epochs=2)
+
+    mismatches = [line for line in str(refused.value).splitlines() if "checkpoint=" in line]
+    assert mismatches == ["  quantum_simulator: checkpoint='pennylane'  this run='torch'"]
+
+
+def test_resume_under_the_same_engine_continues(tmp_path, smoke_cache, monkeypatch):
+    interrupted_in_epoch_2(tmp_path, smoke_cache, monkeypatch)
+    resumed = train(tmp_path, smoke_cache, epochs=2)
+
+    assert resumed["provenance"]["quantum_simulator"] == "torch"
+    assert resumed["manifest"]["quantum_simulator"] == "torch"
+    assert len(resumed["loss"]) == 2

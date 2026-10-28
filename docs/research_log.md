@@ -495,3 +495,11 @@ fix commit cannot name itself.
 - **B6 implemented:** item-level paired bootstrap averaging seeds, per-seed
   McNemar, Holm within each family, PD-11 verdict. Simulation under H0:
   pooled McNemar 18.3 %, item bootstrap 5.0 % (300 runs, κ = 0.8).
+
+## 2026-10-28 — E12 merged
+
+- **Merge:** `b548095` (merge commit of `e12-torch-statevector` after the
+  reviewer's full read; user approval). Merged suite 350 passed, 2 skipped.
+- **Follow-up:** `quantum_simulator` compared on resume and recorded in the
+  manifest; cell 7 prints a torch-engine verdict line. 352 passed, 2 skipped.
+- **Next:** T4 smoke timing at the follow-up commit (cells 0–7).

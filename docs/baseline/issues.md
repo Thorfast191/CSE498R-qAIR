@@ -1325,7 +1325,7 @@ part of C2.
   mutations each fail it.
 
 ### E12 — A training step takes 69.9 s on the T4 (PennyLane per-row circuit execution)
-- **Category:** E · **Severity:** Critical (blocks Step 7: 20 epochs ≈ 58.5 h per run) · **Status:** implemented 2026-10-28 on branch `e12-torch-statevector`; awaiting review, then merge (user decision 2026-10-28)
+- **Category:** E · **Severity:** Critical (blocks Step 7: 20 epochs ≈ 58.5 h per run) · **Status:** **fixed 2026-10-28**: branch `e12-torch-statevector` reviewed in full and merged (`b548095`); T4 step time to be measured
 - **Evidence (T4, user, commit `44fc12a`):** `smoke_timing.py` measured
   70 s per train step (batch 16) and 0.58 s per question for generation,
   i.e. one epoch (141 steps) ≈ 176 min [DERIVED there].
@@ -1395,6 +1395,13 @@ part of C2.
   checkpoints present) pass on the torch default; `t4_checks quantum`
   compares and times the torch engine against `lightning.qubit`. 8 mutations
   of the circuit maths each fail ≥ 1 test.
+- **Follow-up after the merge (2026-10-28):** `quantum_simulator` is a
+  provenance field compared on resume (and in the manifest), so a run never
+  continues under the other engine; `tests/test_determinism_resume.py`: a run
+  interrupted under `"pennylane"` refuses to resume under `"torch"` with
+  exactly that one mismatch, and resumes under the same engine. Notebook cell
+  7 prints a third verdict line for the torch engine (max difference from
+  `lightning.qubit`, seconds per pass for all three).
 - **Interim option without code change:** `QUANTUM_DEVICE="lightning.qubit"`
   on Colab. At the M4's 0.86 s/step and a 2–4× slower Colab CPU
   [ASSUMPTION], ≈ 2–4 s/step, ≈ 2.5–4.5 h per 20-epoch run.

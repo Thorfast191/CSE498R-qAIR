@@ -25,7 +25,8 @@ RUN = run_key("qair", ARC, 42)
 REQUIRED = {
     "git_commit", "dirty", "code_sha256", "code_diff_sha256", "caches",
     "dataset", "seed", "deterministic", "deterministic_warn_only", "device",
-    "device_name", "quantum_device", "quantum_device_fallback", "environment",
+    "device_name", "quantum_simulator", "quantum_device", "quantum_device_fallback",
+    "environment",
     "environment_info",
     "pin_check", "model_config", "train_config", "parameter_counts",
 }
@@ -63,6 +64,7 @@ def test_manifest_has_every_field(trained):
         "split_sizes": {"train": 16, "validation": 8},
     }
     assert manifest["quantum_device"] == "torch.statevector"   # E12 default
+    assert manifest["quantum_simulator"] == "torch"
     assert manifest["model_config"] == history["provenance"]["model_config"]
     assert len(manifest["environment_info"]["packages_sha256"]) == 64
 
@@ -120,7 +122,7 @@ def test_dirty_flag_follows_uncommitted_code(tmp_path):
             "train_config": {"deterministic": True, "deterministic_warn_only": False},
             "cublas_workspace_config": None, "environment": {},
             "environment_info": {}, "pin_check": {}, "model_config": {},
-            "parameter_counts": {},
+            "parameter_counts": {}, "quantum_simulator": None,
         }
         return build_manifest(provenance, RUN, {}, model=None, device="cpu")
 
