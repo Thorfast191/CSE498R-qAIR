@@ -3,42 +3,35 @@
 Builder: Claude Code · Reviewer: Claude on claude.ai (reads GitHub) · Runs
 and decisions: the user. Updated at the end of every session (CLAUDE.md).
 
-**Last updated:** 2026-10-28 · main (`baseline` → `cse498r/main`) at `6f28f31` · **review branch `e12-torch-statevector` at `c0c6b2d`** (not merged)
-
-## For the reviewer: E12 branch
-`https://github.com/Thorfast191/CSE498R-qAIR/tree/e12-torch-statevector`, two commits on top of `81015be`:
-- **`7960dc5` (code):**
-  - New `models/statevector.py`.
-  - `config.QUANTUM_SIMULATOR = "torch"` is the default; `"pennylane"` stays as the reference and fallback.
-  - The quantum layer gains the switch, and `t4_checks` compares and times both engines.
-  - Tests: `tests/test_torch_statevector.py` (outputs and gradients, float64 ≤ 1e-6 and float32 ≤ 1e-5, all 16 arms) and A0 under both engines, plus the determinism and v46 bit-identical forward tests on the default.
-- **`c0c6b2d` (docs):**
-  - README and dossier: both engines are exact classical simulations of the same circuit.
-  - issues.md E12: the CPU-vs-T4 finding.
-- **Branch suite:** 339 passed, 2 skipped.
+**Last updated:** 2026-10-28 · **PINNED_COMMIT = `2f30e39`** (contains the E12 merge `b548095` plus the resume follow-up)
 
 ## Canonical Tier 0 cache (ARC-Easy)
-Built at commit `44fc12a`, session `20261028_135552_44fc12a`, gen_seed 0. Manifest: `runs/20261028_135552_44fc12a/cache_manifest.json`.
-
-| Split | n | sha256 (prefix) |
-|---|---|---|
-| train | 2251 | `4bc0031289a03e4f` |
-| validation | 570 | `0760535c445ad6dc` |
-| test | 2376 | `5faa6d62c82612d6` (never gated) |
+Built at commit `44fc12a`, session `20261028_135552_44fc12a`, gen_seed 0. Manifest: `runs/20261028_135552_44fc12a/cache_manifest.json`. sha256 prefixes: train (2251) `4bc0031289a03e4f`, validation (570) `0760535c445ad6dc`, test (2376) `5faa6d62c82612d6` (never gated). Unchanged by E12: the engine affects training only, not the cache.
 
 ## Done this session
 | Item | Commit | Tests |
 |---|---|---|
-| E12 pushed as a review branch | `7960dc5`, `c0c6b2d` (branch) | 339 passed (branch) |
-| B6 (PD-14 families); PD-14, PD-15 recorded; B5 note (support-only = exploratory) | `6f28f31` | 319 passed, 2 skipped (main) |
+| E12 merged into `baseline` (merge commit) and pushed to `cse498r/main` | `b548095` | 350 passed, 2 skipped |
+| Follow-up: `quantum_simulator` compared on resume and in the manifest; cell 7 gets a torch-engine verdict line | `2f30e39` | **352 passed, 2 skipped** |
 
 ## Decisions needed
-1. **Merge E12** once the reviewer has read the branch. I'll merge it into `baseline` with a merge commit (no rebase of the pushed branch, no force).
+None open. After the smoke timing I'll bring the Step 7 run plan and its time estimate for your go-ahead.
 
 ## Next step
-After the merge:
-1. You run a T4 smoke timing (cells 0–7) at the merge commit, which measures the real step time.
-2. I write the Step 7 Colab section (v46/A3, F0, P0, P1 × seeds 0/1/2 plus the baselines on test, then `stats.py` with the PD-14 families) with a T4 time estimate from that smoke run, and ask before you run it.
+1. You run the T4 smoke timing below.
+2. I estimate the time of the Step 7 runs from it and write the Step 7 Colab section: v46/A3, F0, P0, P1 × seeds 0/1/2 plus the LLM option likelihood, letter pick and vote baselines on test, then `stats.py` with the PD-14 families.
 
-## Colab (now)
-Nothing until the merge. Then use a fresh runtime with `PINNED_COMMIT` set to the merge commit, run cells 0–7, and paste cell 4's timing, cell 6's lines and cell 7's two verdict lines.
+## Colab (now): T4 smoke timing, cells 0–7
+1. Runtime → Disconnect and delete runtime; connect a fresh **T4**.
+2. Open `notebooks/cse498r_baseline.ipynb` fresh from GitHub `main` (it changed in `2f30e39`; don't reuse an open copy).
+3. In cell 0, set `PINNED_COMMIT = "2f30e39"` and keep `SECTION_B_APPROVED = False`.
+4. Run cells **0, 1, 2, 3**. Cell 3 should end with `torch pinned (2.11.0+cu130) and installed; continue`. If it stops on "packages qAIR needs", paste that and stop.
+5. Run cells **4, 5, 6, 7**:
+   - Cell 4 builds a new 20 + 10-question smoke cache in `runs/<session>/smoke/`; it doesn't touch `cache/arc_easy/`.
+   - Cell 5 is the determinism pair, now on the torch engine.
+   - Cell 6 compares and times `lightning.gpu`, `lightning.qubit` and the torch engine.
+6. Don't run cells 8–10; the cache is already built.
+7. Paste:
+   - cell 3's `ENVIRONMENT` block;
+   - cell 4's `SMOKE TIMING` block (per stage, train step, eval/question, [DERIVED] projections);
+   - cell 7's three lines: `determinism:`, `lightning.gpu:`, `torch statevector:`.
