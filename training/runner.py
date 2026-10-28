@@ -31,7 +31,7 @@ from config import EMBEDDING_DIM as DIM
 
 from training.train import Trainer
 from training.checkpoint import (
-    load_best, load_or_resume, run_key, run_provenance, training_config,
+    load_or_resume, run_key, run_provenance, select_for_test, training_config,
 )
 from training.evaluate import evaluate
 from training.environment import check_pins, describe, write_package_list
@@ -242,7 +242,7 @@ def run_training(
 
     if test_loader is not None:
 
-        load_best(model, ckpt_dir, run_name, provenance, device)
+        test_from = select_for_test(model, ckpt_dir, run_name, provenance, device)
 
         test_metrics, records = evaluate(
             model, test_loader, device, return_records=True
@@ -250,11 +250,13 @@ def run_training(
 
         history["test"] = test_metrics
         history["test_records"] = records
+        history["test_from"] = test_from
 
         trainer.save_history(history)
 
         print("\n" + "=" * 60)
-        print(f"[{run_name}] HELD-OUT TEST acc = {test_metrics['acc']:.4f}  "
+        print(f"[{run_name}] HELD-OUT TEST acc = {test_metrics['acc']:.4f} "
+              f"(checkpoint of epoch {test_from['epoch']}, val {test_from['val_acc']:.4f})  "
               f"pairwise_cos = {test_metrics['pairwise_cos']:.4f}  "
               f"interference = {test_metrics['interference_ratio']:.4f}")
         print("=" * 60)

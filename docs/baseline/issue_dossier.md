@@ -729,6 +729,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** 3× compute. **Needs supervisor approval?** No.
 
 #### B3 Validation selects the checkpoint and supplies the number; test never evaluated
+- **Status:** **fixed 2026-10-28** (`select_for_test`; issues.md B3)
 - **Category / severity / blocks:** B / High / every reported accuracy.
 - **Observation:** best = max of 0.35, 0.35, 0.40, 0.45, 0.40, 0.40, 0.45, 0.50
   (`qair_v46_history.pt`) [VERIFIED]. `No test_records found` [OBSERVED cell 41].
@@ -756,6 +757,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** none. **Needs supervisor approval?** No.
 
 #### B4 No "LLM letter pick" baseline (mandatory)
+- **Status:** **fixed 2026-10-28** (`--mode letter`; issues.md B4)
 - **Category / severity / blocks:** B / High / DoD §3.
 - **Observation:** the only generator baseline is length-normalized cloze
   likelihood, 0.40 at n=20 [OBSERVED cell 36].
@@ -785,6 +787,7 @@ $A_n = S_n + e^{i\rho}R_n$.
   **Needs supervisor approval?** No (decided mandatory).
 
 #### B5 No majority-vote-over-hypotheses baseline (mandatory)
+- **Status:** **fixed 2026-10-28** (`--mode vote`, the weighting below; issues.md B5)
 - **Category / severity / blocks:** B / High / DoD §3.
 - **Observation:** absent [VERIFIED: `evaluation/baselines.py` modes `llm`,
   `asymmetry`, `probe`, `direct`].
@@ -842,6 +845,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** wider CIs; this is correct. **Needs supervisor approval?** No.
 
 #### B7 Probe "data ceiling" selects its best epoch on validation
+- **Status:** **fixed 2026-10-28** (train-holdout epochs; issues.md B7)
 - **Category / severity / blocks:** B / Medium / interpretation of probes.
 - **Observation:** probes at n_val=20: 0.25 / 0.25 / 0.40 / 0.30 / 0.35
   [OBSERVED cell 37].

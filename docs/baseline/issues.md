@@ -515,22 +515,69 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
   `config.SEEDS` (`config.py:286`) was not used.
 
 ### B3 — Validation selects the checkpoint and supplies the reported number; test never evaluated
-- **Severity:** High · **Status:** open
+- **Severity:** High · **Status:** **fixed 2026-10-28** (CPU); closed by the full-split runs
 - **Evidence:** `training/train.py:325-329` saves `best` on the max validation
   accuracy. The reported 0.50 is the max of
   `[0.35, 0.35, 0.40, 0.45, 0.40, 0.40, 0.45, 0.50]` (`qair_v46_history.pt`).
   `training/runner.py:87-95` skips test when its cache is missing; the v46
   history has no `test` key.
+- **Already in place before 2026-10-28:** selection on validation only; test
+  evaluated after training from the best checkpoint in `run_training` and in
+  the grid.
+- **Fix (2026-10-28):** `select_for_test` (`training/checkpoint.py`) loads the
+  best checkpoint for the single test evaluation and raises
+  `NoBestCheckpointError` when none exists; before, `load_best` returned False
+  and test was evaluated on whatever weights the model held (the last epoch).
+  The history (`test_from`) and each grid entry record the checkpoint, its
+  1-based epoch and its validation accuracy; the printed test line names them.
+- **Test evidence:** `tests/test_test_selection.py` (4 tests, fake cache with
+  a test split): test is evaluated once per run, from the first-best
+  validation epoch; the reported test accuracy and records equal a fresh
+  evaluation of the best checkpoint; with no best checkpoint the run raises
+  before any test evaluation; grid entries carry `test_from`. 4 mutations each
+  fail ≥ 1 test.
 
 ### B4 — No "LLM letter pick" baseline (mandatory)
-- **Severity:** High · **Status:** open
+- **Severity:** High · **Status:** **fixed 2026-10-28** (CPU; not yet run on the ARC-Easy cache)
 - **Evidence:** `models/generator.py:357-451` is cloze-style option likelihood
   only; `evaluation/baselines.py` has no lettered-options MCQ prompt.
+- **Fix:** `python -m evaluation.baselines --mode letter`. The generator's own
+  model (`HypothesisGenerator`: same name; the run refuses when the cache
+  header records another generator or revision, `GeneratorMismatchError`).
+  Prompt, fixed before any result (`LETTER_PROMPT`): chat template, one user
+  turn "Answer the following multiple-choice question. Reply with the letter
+  of the correct option only." + question + `A. …` lines + `Answer:`. Score:
+  log-softmax of the next-token logits at the answer position (left padding),
+  read at each option's letter token; argmax, ties to the lowest index. Every
+  letter must be a single token, else `ValueError`.
+- **Test evidence:** `tests/test_baselines_vote_letter.py`: a character-level
+  fake model that puts the answer only at the last real token shows the
+  answer position is read (right padding or the first position fail); the
+  prompt letters every option; a multi-token letter is refused; another
+  generator name or revision is refused; records and predictions are
+  written. 6 mutations each fail ≥ 1 test. Slow test (`QAIR_SLOW=1`, real
+  Qwen2.5-0.5B-Instruct, CPU, 478 s): A–H are 8 distinct single tokens; two
+  runs on 20 ARC-Easy validation questions give bit-identical scores. No
+  accuracy was computed.
 
 ### B5 — No majority-vote-over-hypotheses baseline (mandatory)
-- **Severity:** High · **Status:** open
+- **Severity:** High · **Status:** **fixed 2026-10-28** (CPU; not yet run on the ARC-Easy cache)
 - **Evidence:** `evaluation/baselines.py` modes: `llm`, `asymmetry`, `probe`,
   `direct`.
+- **Fix:** `--mode vote` (also in `--mode all`). The weighting is the one
+  pre-registered in the dossier (B5, 2026-10-17), committed before any
+  ARC-Easy result exists: `v_n = Σ_k [hyp_option_k = n] · polarity_k ·
+  cos(H_k, O_n)`, all hypotheses (fallbacks included), argmax with ties to the
+  lowest index. Computed from each sample's `hyp_option` and `polarity`, so it
+  does not depend on the hypothesis order; on the mode-major cache it equals
+  the gate's "support − attack margin". The degenerate count vote is printed
+  next to it for reference.
+- **Test evidence:** `tests/test_baselines_vote_letter.py`: a hand-built
+  sample with known cosines gives the expected votes; shuffled hypotheses give
+  the same votes; ties go to option 0; on the fake cache the accuracy equals
+  the gate's margin line. Mutations (no polarity, misassigned option) fail.
+- **`--out-dir`:** `llm`, `vote` and `letter` write `{mode}_{split}.json` with
+  per-item records and predictions (for B6 and the Step 7 tables).
 
 ### B6 — Pooling records across seeds makes McNemar/bootstrap anti-conservative
 - **Severity:** High · **Status:** open
@@ -539,7 +586,16 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
   Holm is only printed (`:138-140`).
 
 ### B7 — Probe "data ceiling" selects its best epoch on validation
-- **Severity:** Medium · **Status:** open · **Evidence:** `evaluation/baselines.py:333-348`.
+- **Severity:** Medium · **Status:** **fixed 2026-10-28** (CPU) · **Evidence:** `evaluation/baselines.py:333-348`.
+- **Fix:** `fit_probe`: a fixed 20 % holdout of the TRAIN split (seed 0)
+  chooses the epoch count (first best, up to 60); the probe is retrained from
+  the same seed on all of train for that many epochs; validation is
+  evaluated exactly once. Printed with the chosen epochs and holdout accuracy.
+- **Test evidence:** `tests/test_probe_selection.py` (6 tests): the holdout is
+  fixed and disjoint; permuting the validation labels does not change the
+  chosen epochs; validation is evaluated once, last; the final probe trains
+  on all 40 train rows for exactly the chosen epochs; the first best holdout
+  epoch is chosen. 7 mutations each fail ≥ 1 test.
 
 ### B8 — Optimization budget too small for claims about learned scalars
 - **Severity:** High · **Status:** open

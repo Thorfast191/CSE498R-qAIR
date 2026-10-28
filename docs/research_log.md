@@ -445,3 +445,16 @@ fix commit cannot name itself.
 - **Weight-change metric:** denominator floored at 1e-3 (fusion read
   7.07e+08 on the T4).
 - **Tests:** 284 passed, 1 skipped (torch 2.11.0 CPU).
+
+## 2026-10-28 — Step 7 code: B4, B5, B7, B3 (CPU)
+
+- **B5** evidence-weighted vote (pre-registered weighting, dossier B5);
+  **B4** letter pick (prompt fixed in `LETTER_PROMPT`, same generator, revision
+  checked); **B7** probe epochs chosen on a train holdout; **B3** test from
+  the selected checkpoint only, with `test_from`. `--out-dir` writes per-item
+  records.
+- **Real-model check (CPU, QAIR_SLOW=1):** Qwen2.5-0.5B-Instruct letters A–H
+  are single tokens; 20 ARC-Easy validation items scored twice, bit-identical.
+  No accuracy computed.
+- **Tests:** 304 passed, 2 skipped (torch 2.11.0 CPU). Not run on the
+  ARC-Easy cache yet (Section B is building it).

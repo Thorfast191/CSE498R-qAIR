@@ -19,7 +19,7 @@ from config import (
 
 from training.train import Trainer
 from training.checkpoint import (
-    load_best, load_or_resume, run_key, run_provenance, training_config,
+    load_or_resume, run_key, run_provenance, select_for_test, training_config,
 )
 from training.diagnostics import INITIAL_WEIGHTS
 from training.evaluate import evaluate
@@ -351,7 +351,9 @@ def run_ablation_suite(
 
             if test_loader is not None:
 
-                load_best(model, ckpt_dir, run_name, provenance, device)
+                entry["test_from"] = select_for_test(
+                    model, ckpt_dir, run_name, provenance, device
+                )
 
                 test_metrics, records = evaluate(
                     model, test_loader, device, return_records=True

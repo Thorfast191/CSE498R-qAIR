@@ -333,6 +333,28 @@ def load_or_resume(trainer, ckpt_dir, name, epochs, provenance):
     return state
 
 
+class NoBestCheckpointError(RuntimeError):
+    """Test would be evaluated on weights validation never selected (B3)."""
+
+
+def select_for_test(model, ckpt_dir, name, provenance, device):
+    """
+    B3: loads the checkpoint validation selected, for the single test
+    evaluation of a run, and returns where the test number comes from.
+    Raises instead of evaluating whatever weights the model holds when no
+    best checkpoint exists.
+    """
+
+    if not load_best(model, ckpt_dir, name, provenance, device):
+        raise NoBestCheckpointError(
+            f"no {name}_best.pt in {ckpt_dir}: validation never selected a "
+            f"checkpoint, so there is nothing to evaluate on test.")
+
+    best = load_checkpoint_file(os.path.join(ckpt_dir, f"{name}_best.pt"))
+    return {"checkpoint": f"{name}_best.pt", "epoch": best["epoch"] + 1,
+            "val_acc": best["best_acc"]}
+
+
 def load_best(model, ckpt_dir, name, provenance, device):
     """
     Loads f"{name}_best.pt" into model after the same provenance check as a
