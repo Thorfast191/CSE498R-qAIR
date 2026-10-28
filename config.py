@@ -54,7 +54,8 @@ def resolve_device():
 #
 # CSE498R baseline phase: ARC-Easy is the default (supervisor direction,
 # Oct 2026; docs/baseline/issues.md E9). The capstone configuration needs
-# `python main.py --arc-config ARC-Challenge --epochs 8`.
+# `python main.py --arc-config ARC-Challenge --epochs 8 --train-samples 80
+# --val-samples 20`.
 ARC_CONFIG = "ARC-Easy"  # "ARC-Challenge" | "ARC-Easy" | "merged"
 
 ARC_SPLIT_SIZES = {

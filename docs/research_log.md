@@ -376,3 +376,14 @@ fix commit cannot name itself.
 - **Not done:** every T4 item (smoke timing, determinism pair,
   `lightning.gpu` check, torch pin, ARC-Easy cache build) is for the Step 6
   notebook. No real training has run.
+
+## 2026-10-28 — Working arrangement; capstone data caps on the CLI
+
+- **Commit `ff290dc`:** CLAUDE.md gains the builder / reviewer / user
+  arrangement and the standing approval policy; new `docs/HANDOFF.md`.
+- **`main.py --train-samples N --val-samples N`** (both modes, default all),
+  so the capstone configuration is one command:
+  `python main.py --arc-config ARC-Challenge --epochs 8 --train-samples 80
+  --val-samples 20`. `tests/test_defaults.py` covers both flags in both
+  modes; 3 mutations (one per pass-through dropped) each fail 1 test.
+  `python -m pytest tests -q` → 256 passed, 1 skipped in 151.24 s.

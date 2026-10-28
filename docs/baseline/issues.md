@@ -65,7 +65,8 @@ smoke timing measurement (E8), the same-seed determinism runs and the
 `lightning.gpu` check (E10), the torch pin (E11) and the ARC-Easy cache build;
 all are in the Step 6 notebook. Defaults are now `ARC_CONFIG = "ARC-Easy"`,
 `EPOCHS = 20`; the capstone configuration needs
-`python main.py --arc-config ARC-Challenge --epochs 8` (plus its 80/20 data caps).
+`python main.py --arc-config ARC-Challenge --epochs 8 --train-samples 80 --val-samples 20`
+(`--train-samples`/`--val-samples` added 2026-10-28).
 
 **Phase 3 — evaluation (once the ARC-Easy cache exists)**
 14. **B4** LLM letter-pick baseline · **B5** majority-vote baseline.
@@ -742,7 +743,10 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
     `main.py --epochs` added. Reproducing the capstone configuration needs
     `python main.py --arc-config ARC-Challenge --epochs 8` (README, `config.py`,
     CLAUDE.md); the capstone run also capped data at 80 train / 20 validation
-    in its notebook, which `main.py` does not expose;
+    in its notebook, which `main.py` did not expose. **Follow-up
+    2026-10-28:** `main.py --train-samples N --val-samples N` (both modes;
+    default all), so the capstone configuration is one command:
+    `python main.py --arc-config ARC-Challenge --epochs 8 --train-samples 80 --val-samples 20`;
   - kept: the "v45:" history comments, historical measurements (e.g. 294/869
     in `input_ablation.py`), the README's v45 sections (marked as history) and
     `docs/history/CLAUDE_v46.md` (untouched, historical evidence).

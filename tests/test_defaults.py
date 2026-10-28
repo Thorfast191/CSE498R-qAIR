@@ -55,11 +55,15 @@ def cli(monkeypatch):
 
 @pytest.mark.parametrize("mode", ["train", "ablation"])
 def test_cli_defaults_and_capstone_flags(cli, mode):
-    assert {k: cli("--mode", mode)[k] for k in ("arc_config", "epochs")} == \
-        {"arc_config": "ARC-Easy", "epochs": 20}
+    keys = ("arc_config", "epochs", "train_samples", "val_samples")
 
-    capstone = cli("--mode", mode, "--arc-config", "ARC-Challenge", "--epochs", "8")
-    assert (capstone["arc_config"], capstone["epochs"]) == ("ARC-Challenge", 8)
+    assert {k: cli("--mode", mode)[k] for k in keys} == \
+        {"arc_config": "ARC-Easy", "epochs": 20,
+         "train_samples": None, "val_samples": None}
+
+    capstone = cli("--mode", mode, "--arc-config", "ARC-Challenge", "--epochs", "8",
+                   "--train-samples", "80", "--val-samples", "20")
+    assert tuple(capstone[k] for k in keys) == ("ARC-Challenge", 8, 80, 20)
 
 
 def test_stale_names_are_gone_from_tracked_code():

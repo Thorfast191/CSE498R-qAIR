@@ -41,7 +41,20 @@ def main():
     parser.add_argument(
         "--epochs", type=int, default=EPOCHS,
         help="Epoch cap (default config.EPOCHS = 20, PD-7). The capstone "
-             "configuration: --arc-config ARC-Challenge --epochs 8.",
+             "configuration: --arc-config ARC-Challenge --epochs 8 "
+             "--train-samples 80 --val-samples 20.",
+    )
+
+    parser.add_argument(
+        "--train-samples", type=int, default=None,
+        help="Use only the first N train questions of the cache "
+             "(default: all). The capstone used 80.",
+    )
+
+    parser.add_argument(
+        "--val-samples", type=int, default=None,
+        help="Use only the first N validation questions of the cache "
+             "(default: all). The capstone used 20.",
     )
 
     parser.add_argument(
@@ -81,6 +94,8 @@ def main():
         run_training(
             seed=args.seed,
             epochs=args.epochs,
+            train_samples=args.train_samples,
+            val_samples=args.val_samples,
             with_test=not args.no_test,
             arc_config=args.arc_config,
             deterministic_warn_only=args.deterministic_warn_only,
@@ -94,6 +109,8 @@ def main():
             ckpt_dir=CKPT_DIR,
             seeds=tuple(args.seeds),
             epochs=args.epochs,
+            train_samples=args.train_samples,
+            val_samples=args.val_samples,
             with_test=not args.no_test,
             arc_config=args.arc_config,
             configs=args.configs,

@@ -23,7 +23,7 @@ be applied without supervisor approval. v46's previous project notes are in
 
 Baseline dataset: ARC-Easy, the default `ARC_CONFIG` since E9; `EPOCHS = 20`,
 `PATIENCE = 5` (PD-7). Reproducing the capstone configuration needs
-`--arc-config ARC-Challenge --epochs 8` (plus its 80/20 data caps). E3 and E7,
+`--arc-config ARC-Challenge --epochs 8 --train-samples 80 --val-samples 20`. E3 and E7,
 which blocked the ARC-Easy cache build, are fixed.
 
 ## What this project is
