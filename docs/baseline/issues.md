@@ -1427,7 +1427,7 @@ part of C2.
 - **Closed:** Step 7 is no longer blocked; its run plan uses 1.514 s/step.
 
 ### E13 — The torch circuit engine fails on Apple-Silicon MPS (float64)
-- **Category:** E · **Severity:** Low (local development only; Colab uses CUDA) · **Status:** open, found 2026-10-29
+- **Category:** E · **Severity:** Low (local development only; Colab uses CUDA) · **Status:** open, found 2026-10-29; **decided 2026-10-29 (user): on MPS run the circuit on the CPU**; low priority, after Step 7 (the Step 7 runs are pinned to `2966775` either way)
 - **Evidence [VERIFIED: local dry run of the Step 7 notebook, torch 2.11.0, Apple M4]:**
   `python main.py --mode ablation …` on a Mac raises `TypeError: Cannot
   convert a MPS Tensor to float64 dtype` in `models/statevector.py`

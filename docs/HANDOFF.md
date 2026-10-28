@@ -27,10 +27,9 @@ Commit `44fc12a`, session `20261028_135552_44fc12a`, gen_seed 0; manifest `runs/
 Per run: 6 epochs (earliest early stop) = 22 min to 20 epochs = 72 min; test eval adds seconds. Total 5.6–15.8 h of T4. [HYPOTHESIS] A3/P0/P1 cost the same per step as the measured v46 config (same circuit calls); the 1.514 s mean covers only 2 steps.
 
 ## Decisions needed
-1. **Approve the Step 7 runs** (each session over 1 h). Recommendation: approve; F0 first gives the PD-11 primary arm earliest.
-2. E13 (later, low): on MPS run the circuit on the CPU (recommended), or use complex64 there.
+None open. Approved 2026-10-29 (reviewer read `2966775`; user): the Step 7 runs, `RUNS_APPROVED = True` for all five sessions. E13 decided: on MPS run the circuit on the CPU; implemented after Step 7.
 
-## Colab, once approved — each session
+## Colab now — each session
 1. Fresh **T4** runtime; open `notebooks/cse498r_step7_baseline.ipynb` fresh from GitHub `main`.
 2. Cell 0: `PINNED_COMMIT = "2966775"`, `SESSION_NUMBER = 1` (then 2, 3, 4, 5), `RUNS_APPROVED = True`.
 3. Sessions 1–4: run cells **0–6**. Session 5: cells **0–5, 7, 8**.
