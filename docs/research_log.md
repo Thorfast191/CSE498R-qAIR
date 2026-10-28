@@ -458,3 +458,26 @@ fix commit cannot name itself.
   No accuracy computed.
 - **Tests:** 304 passed, 2 skipped (torch 2.11.0 CPU). Not run on the
   ARC-Easy cache yet (Section B is building it).
+
+## 2026-10-28 — Full ARC-Easy cache and its gate (finding; train/validation only)
+
+- **Cache (Section B, user, commit `44fc12a`, session
+  `20261028_135552_44fc12a`):** train 2251, validation 570, test 2376, all
+  `complete=True`, gen_seed 0; sha256 train `4bc0031289a03e4f…`, validation
+  `0760535c445ad6dc…`, test `5faa6d62c82612d6…`; manifest
+  `runs/20261028_135552_44fc12a/cache_manifest.json`. Canonical Tier 0 cache.
+- **Gate (train / validation), with binomial SE and exact two-sided p against
+  per-item chance 0.2501 / 0.2500 (`scripts/gate_significance.py`):**
+  support 0.3350 ± 0.0099 (p 2.8e-19) / 0.3298 ± 0.0197 (p 2.3e-5);
+  attack 0.1804 ± 0.0081 (p 3.0e-15, below) / 0.1719 ± 0.0158 (p 9.9e-6, below);
+  margin 0.2554 ± 0.0092 (p 0.58) / 0.2509 ± 0.0182 (p 0.99);
+  LLM likelihood 0.5722 ± 0.0104 / 0.5825 ± 0.0207. Fallbacks 1/18004, 0/4562.
+- **Interpretation (dossier D1, D5):** support carries signal at full scale;
+  the attack channel is anti-informative (first-order implied η ≈ 0.91 ±
+  0.07 train, 0.99 ± 0.16 validation) and cancels it, so the margin (= B5
+  vote = Tier 1 gate statistic) is at chance; 143/570 is below the gate's
+  164. The capstone's n = 80 had power 0.52 for this effect, but its 14/80
+  is unlikely at the ARC-Easy rate (p 1.1e-3): probably a dataset effect
+  (ARC-Challenge), not only low power.
+- **Consequence:** T1c attack verification is the top-priority evidence fix
+  (improvement_plan.md note; reordering the staging is proposed, not adopted).

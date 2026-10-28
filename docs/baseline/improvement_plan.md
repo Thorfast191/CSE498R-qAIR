@@ -172,6 +172,17 @@ any. The v46 cache gate found all three hypothesis statistics consistent with
 chance on 80 items: 0.175 / 0.1875 / 0.200 vs 0.25 [OBSERVED cell 14; dossier
 check 12]. Tiers 2–4 are tested only on a cache that passes the gate below.
 
+> **Priority note (2026-10-28, measured on the full Tier 0 cache, train /
+> validation only; dossier D1, D5).** Support agreement is above chance
+> (0.3350 / 0.3298, z +9.3 / +4.4), attack disagreement is **below** chance
+> (0.1804 / 0.1719, z −7.6 / −4.3), and the v46 **support − attack margin is
+> at chance** (0.2554 / 0.2509; 143/570 on validation, below the gate's 164).
+> The attack channel is anti-informative and cancels the support signal
+> (first-order implied η ≈ 0.9). This makes **T1c attack verification the
+> top-priority evidence fix**. Moving T1c to the front of the staging order
+> below changes the pre-registered order (PD-3) and is proposed, not yet
+> adopted.
+
 ### Tier 1 pre-training gate (applies to every Tier 1 cache)
 
 > **Gate.** On the full ARC-Easy **validation** split (n = 570 ≥ 500), the
@@ -183,9 +194,10 @@ check 12]. Tiers 2–4 are tested only on a cache that passes the gate below.
 
 - **Chance level.** ARC-Easy is "mostly 4 options" (dataset_options.md), not
   all 4. The gate therefore uses the per-item chance Σᵢ 1/Nᵢ / n and an exact
-  Poisson-binomial tail, not 0.25. The 0.288 threshold applies when every item
-  has 4 options [ASSUMPTION until the option-count histogram is computed from
-  the cache].
+  Poisson-binomial tail, not 0.25. Computed 2026-10-28 from the ARC-Easy
+  option counts (train {3: 6, 4: 2241, 5: 4}, validation {3: 1, 4: 567, 5: 2}):
+  chance 0.2501 / 0.2500; exact thresholds **605 / 2251** (train) and
+  **164 / 570** (validation) (`scripts/gate_significance.py`).
 - **Gate is on validation, never test** (rule 5).
 - **A cache that fails the gate is not trained on.** Its gate numbers are
   reported as the D1 finding for that generator configuration.

@@ -822,7 +822,7 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
 ## D. Data / input problems
 
 ### D1 — 0.5B hypotheses carry no signal beyond chance
-- **Severity:** Critical (for the research question; it does not block "working") · **Status:** open
+- **Severity:** Critical (for the research question; it does not block "working") · **Status:** open; **revised 2026-10-28** — on the full ARC-Easy cache the support channel carries signal (0.3350 / 0.3298 vs chance 0.25, z +9.3 / +4.4) while the margin is at chance because the attack channel is anti-informative (dossier D1, D5)
 - **Evidence:** Notebook cell 14, `[CACHE QUALITY train / ARC-Challenge] 80 samples`:
   support 0.1750, attack 0.1875, margin 0.2000, LLM likelihood 0.3375,
   `[SIGNAL WARNING]`. Chance ≈ 0.25.
@@ -1067,6 +1067,10 @@ as measurement only; D5 in Phase 4; C6/C7 for the supervisor).
   CI. Filter or regenerate only with approval.
 - **Verify:** the audit; the dossier derives that the attack channel's expected
   signal scales with (1 − 2η).
+- **Full-scale finding (2026-10-28):** attack disagreement 0.1804 / 0.1719,
+  below chance (z −7.6 / −4.3, train / validation): anti-informative.
+  First-order implied η ≈ 0.91 ± 0.07 (train), 0.99 ± 0.16 (validation);
+  details and assumptions in dossier D5. The audit is still needed.
 
 ### C6 — The collapse over hypotheses is near-uniform
 - **Category:** C · **Severity:** High · **Status:** open · **needs supervisor discussion**

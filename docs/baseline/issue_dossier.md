@@ -1241,6 +1241,45 @@ $A_n = S_n + e^{i\rho}R_n$.
   baseline (B5).
 - **Risks:** none. **Needs supervisor approval?** Measuring: no. Changing the
   generator or prompts: yes.
+- **Full-scale measurement (2026-10-28, finding; train / validation only).**
+  Canonical Tier 0 cache, ARC-Easy, commit `44fc12a`, gen_seed 0 (session
+  `20261028_135552_44fc12a`; hashes in `docs/HANDOFF.md`):
+
+  | Statistic | Train (n = 2251) | Validation (n = 570) |
+  |---|---|---|
+  | support agreement | 0.3350 (754) ± 0.0099, z +9.29, p 2.8e-19 | 0.3298 (188) ± 0.0197, z +4.40, p 2.3e-5 |
+  | attack disagreement | 0.1804 (406) ± 0.0081, z −7.64, p 3.0e-15 | 0.1719 (98) ± 0.0158, z −4.30, p 9.9e-6 |
+  | support − attack margin | 0.2554 (575) ± 0.0092, z +0.58, p 0.58 | 0.2509 (143) ± 0.0182, z +0.05, p 0.99 |
+  | LLM option likelihood | 0.5722 (1288) ± 0.0104, z +35.3, p 3e-230 | 0.5825 (332) ± 0.0207, z +18.3, p 3e-63 |
+
+  Accuracy (hits) ± binomial SE; z and exact two-sided p against per-item
+  chance (Poisson-binomial). Chance 0.2501 / 0.2500 (train option counts
+  {3: 6, 4: 2241, 5: 4}, validation {3: 1, 4: 567, 5: 2}). Computed by
+  `scripts/gate_significance.py` [DERIVED from the reported gate numbers].
+  Fallback hypotheses 1/18004 (train), 0/4562 (validation); score_failed 0.
+  Test split: built, never gated, its numbers not seen.
+
+  - **Support carries signal at full scale** (+9.3 σ train, +4.4 σ
+    validation, ≈ +8 points over chance, replicated on both splits). D1 as
+    stated ("no detectable signal") does not hold for the support channel on
+    ARC-Easy.
+  - **The capstone's n = 80 conclusion was underpowered, and not only
+    that.** At n = 80 a true rate of 0.335 is detected (one-sided α 0.05,
+    k ≥ 27) with power 0.52 only. But the capstone's 14/80 = 0.175 (95% CI
+    [0.092, 0.258]) is itself unlikely under the ARC-Easy rate:
+    P(X ≤ 14 | 80, 0.335) = 1.1e-3. The capstone measured ARC-Challenge, so
+    the difference is more likely a dataset effect (a weaker support signal
+    on Challenge items) than noise alone [HYPOTHESIS]; the two cannot be
+    separated without an ARC-Challenge cache at scale.
+  - **The attack channel is anti-informative** (significantly below
+    chance on both splits; see D5), and it cancels the support signal: the
+    support − attack margin, which is also the B5 vote and the Tier 1 gate
+    statistic, is at chance (p 0.58 / 0.99). On validation 143/570 is below
+    the gate threshold 164, so this cache would fail the Tier 1 gate.
+  - The prediction above (margin CI excluding 0.25 at n = 570) **failed**;
+    the reason is the attack channel, not the support channel.
+  - The LLM's own option likelihood (0.57 / 0.58) is far stronger than any
+    hypothesis statistic.
 
 #### D2 Hypotheses are less diverse than the options; support ≈ attack for the same option
 - **Category / severity / blocks:** D / High / limits D1.
@@ -1355,6 +1394,25 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Verification test:** the audit, CPU only, on cached texts.
 - **Risks:** none for measurement. **Needs supervisor approval?** Filtering or
   regeneration: yes.
+- **Full-scale measurement (2026-10-28, finding; train / validation only;
+  table in D1).** Attack disagreement (argmin_n cos(H_att_n, O_n) = y) is
+  0.1804 ± 0.0081 on train and 0.1719 ± 0.0158 on validation, **below**
+  chance (z −7.6 / −4.3): the attack written for the correct option is the
+  one *most* similar to it. In the (1 − 2η) model that is η > 0.5, the
+  anti-informative regime.
+  - **Implied η [DERIVED, first-order].** Assume the attack channel, if fully
+    compliant (η = 0), would carry the same magnitude of option-level signal
+    as the support channel, and that near chance accuracy is linear in the
+    expected signed evidence. Then (a_att − c) = (1 − 2η)(a_sup − c), so
+    η̂ = (1 − (a_att − c)/(a_sup − c)) / 2 = **0.91 (delta-method SE 0.07)**
+    on train and **0.99 (SE 0.16)** on validation. Both assumptions are
+    strong; this is an estimate of the regime (most attacks behave like
+    supports), not of η itself. The audit (100 attacks, fixed rubric) still
+    measures η directly.
+  - Consistent with the margin at chance: with η ≈ 1 an attack is
+    approximately a second support, and support − attack cancels.
+  - The prediction above (η̂ > 0.2) is supported by this indirect estimate,
+    pending the audit.
 
 ### Part C — Design limitations (all **needs supervisor discussion**)
 
