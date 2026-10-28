@@ -154,6 +154,9 @@ def test_quantum_check_on_the_reference_device(tmp_path, cpu, capsys):
         report = json.load(f)
     keys = {"outputs", "input_grad", "weight_grad"}
     assert report["constructed_device"] == "lightning.qubit"
+    assert report["reference_constructed_device"] == "lightning.qubit"
+    assert report["qnode_devices"] == {"tested": "lightning.qubit", "reference": "lightning.qubit"}
+    assert all(s > 0 for s in report["seconds_per_pass"].values())
     assert report["repeat_bit_identical"] == dict.fromkeys(keys, True)
     assert report["vs_reference_max_abs_diff"] == dict.fromkeys(keys, 0.0)
     assert "QUANTUM DEVICE CHECK" in capsys.readouterr().out

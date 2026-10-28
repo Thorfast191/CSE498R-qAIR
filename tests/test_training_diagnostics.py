@@ -95,6 +95,28 @@ def test_drift_and_relative_weight_change_from_the_run_start():
     assert change == pytest.approx({"a": 0.1, "b": 0.0, ROOT: 0.25 / math.pi})
 
 
+def test_relative_change_of_a_zero_initialised_module_is_floored():
+    from training.diagnostics import NORM_FLOOR, describe_drift, floored_modules
+
+    model = Tiny()
+    with torch.no_grad():
+        model.a.weight.zero_()                     # starts at exactly zero
+        model.b.weight.fill_(2.0)
+
+    history = {}
+    start_of_run(history, model)
+    with torch.no_grad():
+        model.a.weight.add_(torch.tensor([[0.003, 0.004]]))   # ||W - W0|| = 0.005
+
+    _, _, change = parameter_drift(model, history)
+
+    assert change["a"] == pytest.approx(0.005 / NORM_FLOOR)   # 5, not ~5e9
+    assert change["b"] == 0.0
+    assert floored_modules(model, history) == {"a"}
+    line = describe_drift({}, change, floored_modules(model, history))
+    assert "a* 5" in line and "b 0" in line
+
+
 def test_start_of_run_keeps_a_resumed_runs_w0():
     model = Tiny()
     history = {}

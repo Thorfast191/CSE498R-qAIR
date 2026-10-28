@@ -190,13 +190,25 @@ def print_determinism(report):
 # quantum
 # ---------------------------------------------------------------------------
 
-def circuit_pass(layer, z, readout):
-    """Outputs, input gradient and weight gradient of one forward/backward."""
+def circuit_pass(layer, z, readout, seconds=None):
+    """
+    Outputs, input gradient and weight gradient of one forward/backward;
+    appends its wall-clock seconds to `seconds` when given.
+    """
 
+    import time
+
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    start = time.perf_counter()
     layer.zero_grad()
     z = z.detach().clone().requires_grad_(True)
     out = layer.quantum(z)
     (out * readout).sum().backward()
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    if seconds is not None:
+        seconds.append(time.perf_counter() - start)
 
     return {
         "outputs": out.detach().cpu(),
@@ -218,7 +230,7 @@ def max_abs(a, b):
     return {k: (a[k] - b[k]).abs().max().item() for k in a}
 
 
-def run_quantum(device_name="lightning.gpu", n_inputs=64, seed=0):
+def run_quantum(device_name="lightning.gpu", n_inputs=128, seed=0):
     from training.runner import device
 
     torch.manual_seed(seed)
@@ -237,9 +249,19 @@ def run_quantum(device_name="lightning.gpu", n_inputs=64, seed=0):
         report["unavailable"] = f"{type(error).__name__}: {error}"
         return report
     report["constructed_device"] = layer.device_name
+    report["reference_constructed_device"] = reference.device_name
+    # The device each circuit actually executes on, read from its QNode.
+    report["qnode_devices"] = {"tested": layer.quantum.qnode.device.name,
+                               "reference": reference.quantum.qnode.device.name}
 
-    first, second = circuit_pass(layer, z, readout), circuit_pass(layer, z, readout)
-    expected = circuit_pass(reference, z, readout)
+    tested_seconds, reference_seconds = [], []
+    first = circuit_pass(layer, z, readout, tested_seconds)
+    second = circuit_pass(layer, z, readout, tested_seconds)
+    expected = circuit_pass(reference, z, readout, reference_seconds)
+    circuit_pass(reference, z, readout, reference_seconds)
+    # The second pass of each, so one-time initialisation is not counted.
+    report["seconds_per_pass"] = {"tested": tested_seconds[1],
+                                  "reference": reference_seconds[1]}
 
     report["repeat_bit_identical"] = {k: torch.equal(first[k], second[k]) for k in first}
     report["repeat_max_abs_diff"] = max_abs(first, second)
@@ -259,11 +281,17 @@ def print_quantum(report):
 
     print(f"constructed device : {report['constructed_device']}  "
           f"(torch device {report['torch_device']}, {report['dtype']})")
+    print(f"QNode devices      : tested {report['qnode_devices']['tested']}, "
+          f"reference {report['qnode_devices']['reference']}")
+    print(f"seconds per pass   : tested {report['seconds_per_pass']['tested']:.3f}, "
+          f"reference {report['seconds_per_pass']['reference']:.3f} "
+          f"({report['n_inputs']} rows, forward + backward)")
     for key in ("outputs", "input_grad", "weight_grad"):
         print(f"{key:<12s} repeat bit-identical {str(report['repeat_bit_identical'][key]):<5s} "
               f"repeat max|d| {report['repeat_max_abs_diff'][key]:.3e}  "
               f"vs {report['reference']} max|d| {report['vs_reference_max_abs_diff'][key]:.3e}")
-    print("Reading aid: float32 machine epsilon is 1.19e-07, float64 2.22e-16.")
+    print("Reading aid: float32 machine epsilon is 1.19e-07, float64 2.22e-16. TorchLayer "
+          "returns float32, so float64-level differences between the devices round away.")
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +318,8 @@ def main(argv=None):
 
     qua = sub.add_parser("quantum")
     qua.add_argument("--device", default="lightning.gpu")
-    qua.add_argument("--n-inputs", type=int, default=64)
+    qua.add_argument("--n-inputs", type=int, default=128,
+                     help="Rows per pass (one training step: batch 16 x 8 hypotheses).")
     qua.add_argument("--out", required=True)
 
     args = parser.parse_args(argv)

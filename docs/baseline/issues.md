@@ -1236,5 +1236,65 @@ part of C2.
   of relative change, max = last, clipping not counted, W0 kept in the grid)
   each fail ≥ 1 test. Full suite: 229 passed, 1 skipped in 141.59 s.
 
+- **Follow-up 2026-10-28:** the T4 smoke run printed a relative change of
+  7.07e+08 for one module whose W0 is (near) zero. The denominator is now
+  `max(‖W0‖, NORM_FLOOR = 1e-3)`; such modules are marked `*` in the printed
+  line (`floored_modules`). `tests/test_training_diagnostics.py` +1 test; 2
+  mutations each fail it.
+
+### E12 — A training step takes 69.9 s on the T4 (PennyLane per-row circuit execution)
+- **Category:** E · **Severity:** Critical (blocks Step 7: 20 epochs ≈ 58.5 h per run) · **Status:** open; fix proposed, awaiting approval (2026-10-28)
+- **Evidence (T4, user, commit `44fc12a`):** `smoke_timing.py` measured
+  70 s per train step (batch 16) and 0.58 s per question for generation,
+  i.e. one epoch (141 steps) ≈ 176 min [DERIVED there].
+- **Profile (CPU, Apple M4, torch 2.11.0, `lightning.qubit`, B = 16, N = 4,
+  K = 8; scratch script, two identical runs) [VERIFIED]:**
+
+  | Part | Seconds |
+  |---|---|
+  | full training step (forward + backward) | 0.86 (0.77 + 0.09) |
+  | same step, circuit replaced by a stand-in of the same shape | 0.019 |
+  | circuit alone, 128 rows, forward / backward | 0.32 / 0.02 |
+  | eval forward, one batch, no grad | 0.68 |
+
+  - The circuit is ≈ 98 % of the step. It runs **twice per forward**: once
+    after the first reasoner pass and again in the validator-feedback pass
+    (`models/full_model.py` `_run_quantum`, E8 note), each time on B·K = 128
+    rows.
+  - `qml.Tracker`: 512 executions and 512 derivatives per step. `TorchLayer`
+    splits the batch into one tape per row; `diff_method="best"` resolves to
+    lightning's **adjoint** method, computed together with the forward pass
+    (`execute_and_derivative`), which is why backward is cheap and forward
+    is not. The cost is per-row tape overhead, linear in rows (1 row 4 ms,
+    8 rows 19 ms, 32 rows 73 ms, 128 rows 0.32 s).
+  - Not a cost: the rest of the model (19 ms), the reasoner's 3 persistent
+    steps, the per-module diagnostics.
+- **Why 80× slower on the T4 than on this CPU — not measured; hypotheses:**
+  (1) `lightning.gpu` pays a fixed per-tape cost (cuStateVec setup, host ↔
+  device copies, synchronisation) on 512 tiny 6-qubit tapes per step; (2)
+  the smoke run times only 2 steps, so one-time start-up (CUDA context,
+  cuStateVec, first-call overheads) is counted in the per-step mean; (3)
+  Colab's 2 vCPUs are slower than an M4 for the per-tape Python work. The
+  next cell-6 run reports seconds per 128-row pass for `lightning.gpu` and
+  `lightning.qubit` (`t4_checks.py quantum`, now with timings), which
+  separates (1) from (2) and (3).
+- **Proposed fix (needs approval: same math, not bit-identical):** a
+  torch-native statevector of the same circuit (Hadamard, `AngleEmbedding`
+  Y, `StronglyEntanglingLayers` with PennyLane's `Rot` and CNOT ranges,
+  Pauli X/Y/Z expectations), batched over all rows, differentiated by
+  autograd on the model's device; PennyLane kept behind a flag as the
+  reference. Prototype (scratch, CPU) against `TorchLayer`: max |Δ output|
+  1.5e-8, |Δ input grad| 1.2e-7, |Δ weight grad| 1.9e-6 in complex128 (the
+  reference itself returns float32); 128 rows forward + backward in 8 ms
+  (complex128) / 6.6 ms (complex64), against ≈ 340 ms for PennyLane.
+- **Estimate after the fix [DERIVED on the M4 / HYPOTHESIS for the T4]:**
+  CPU step ≈ 0.019 + 2 × 0.008 ≈ 0.035 s. On the T4, the circuit becomes a
+  few hundred small kernels per step; estimated 0.05–0.15 s per step, i.e.
+  141 × 20 steps ≈ 2.5–7 min of training per 20-epoch run plus validation,
+  to be measured by the smoke run.
+- **Interim option without code change:** `QUANTUM_DEVICE="lightning.qubit"`
+  on Colab. At the M4's 0.86 s/step and a 2–4× slower Colab CPU
+  [ASSUMPTION], ≈ 2–4 s/step, ≈ 2.5–4.5 h per 20-epoch run.
+
 ### Note for every training run
 **Always commit before starting a training run; the code fingerprint ignores untracked .py files.**

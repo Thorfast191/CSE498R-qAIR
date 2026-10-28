@@ -425,3 +425,23 @@ fix commit cannot name itself.
 - **Expected conflicts [DERIVED]:** see issues.md E11 (simulated; to confirm).
 - **Tests:** a new venv with torch 2.11.0 (CPU, macOS arm64) and the other
   pins: `python -m pytest tests -q` → 283 passed, 1 skipped in 164.98 s.
+
+## 2026-10-28 — Section A on the T4; training-speed profile (E12)
+
+- **Section A (user, T4, `44fc12a`):** determinism pair IDENTICAL (0
+  differences, max 0.0); `lightning.gpu` repeatable, max difference from
+  `lightning.qubit` 0.0 for outputs and both gradients; generation 0.58
+  s/question (full cache ≈ 0.89 h [DERIVED]); train step 69.9 s → 20 epochs
+  ≈ 58.5 h per run [DERIVED]. Section B (cache build) started.
+- **The 0.0 difference:** the reference is built with
+  `quantum_device="lightning.qubit"`, which `_build_device` tries alone (no
+  fallback); `TorchLayer` returns float32 [VERIFIED locally], so
+  float64-level differences between the simulators round away. The quantum
+  check now records both QNode device names and seconds per pass.
+- **Profile (E12):** CPU step 0.86 s, 98 % in the circuit (512 per-row
+  tapes per step, adjoint). Torch statevector prototype: same outputs and
+  gradients within 1.5e-8 / 1.9e-6, 8 ms per 128 rows. Proposed; awaiting
+  approval.
+- **Weight-change metric:** denominator floored at 1e-3 (fusion read
+  7.07e+08 on the T4).
+- **Tests:** 284 passed, 1 skipped (torch 2.11.0 CPU).

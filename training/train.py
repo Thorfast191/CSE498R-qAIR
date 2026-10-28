@@ -15,6 +15,7 @@ from training.diagnostics import (
     GradNormTracker,
     describe_drift,
     describe_grad_norm,
+    floored_modules,
     parameter_drift,
     start_of_run,
 )
@@ -314,7 +315,7 @@ class Trainer:
             print(f"Coh contrast  : {metrics['coherent_contrast']:.4f} "
                   f"((max-min)/mean over options; rises under cancellation)")
             print(describe_grad_norm(grad_norm, clipped, skipped))
-            print(describe_drift(drift, change))
+            print(describe_drift(drift, change, floored_modules(self.model, history)))
 
             if self.verbose and hasattr(self.model, "fusion"):
                 # Blend weights exist only in the arms that use them (A2).

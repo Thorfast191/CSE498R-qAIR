@@ -6,7 +6,10 @@ Per-epoch training diagnostics (DoD §2.2, §2.7; issues B8, C2).
     fraction of steps clipped and the number of steps AMP skipped.
   * parameter_drift: every 0-d parameter (phases, temperatures, gates) and
     its drift from the run's start; per top-level module the relative
-    weight change ||W - W0|| / ||W0||.
+    weight change ||W - W0|| / max(||W0||, NORM_FLOOR). The floor keeps a
+    module that starts at (near) zero from reading as an explosion (the
+    T4 smoke run printed 7.07e+08 for one); such modules are marked "*"
+    in the printed line.
 
 W0 and the initial scalars are stored in the history (INITIAL_WEIGHTS,
 INITIAL_SCALARS), so a resumed run measures from the run's true start.
@@ -21,6 +24,9 @@ TOTAL = "total"
 
 INITIAL_WEIGHTS = "initial_weights"
 INITIAL_SCALARS = "initial_scalars"
+
+# Denominator floor of the relative weight change.
+NORM_FLOOR = 1e-3
 
 # Per-epoch history keys, one entry appended per epoch.
 EPOCH_KEYS = ("grad_norm", "clipped_fraction", "skipped_steps",
@@ -83,7 +89,7 @@ def parameter_drift(model, history):
                 (param.detach().cpu() - initial[name]).pow(2).sum() for name, param in params
             )
             norm = sum(initial[name].pow(2).sum() for name, _ in params)
-            change[module] = (diff.sqrt() / norm.sqrt().clamp(min=1e-12)).item()
+            change[module] = (diff.sqrt() / norm.sqrt().clamp(min=NORM_FLOOR)).item()
 
     return scalars, drift, change
 
@@ -150,8 +156,17 @@ def describe_grad_norm(grad_norm, clipped, skipped):
             f"{modules} | clipped {clipped:.0%} of steps, AMP skipped {skipped}")
 
 
-def describe_drift(drift, change):
+def floored_modules(model, history):
+    """Modules whose ||W0|| is below NORM_FLOOR (relative change uses the floor)."""
+
+    initial = history[INITIAL_WEIGHTS]
+    return {module for module, params in parameters_by_module(model).items()
+            if sum(initial[name].pow(2).sum() for name, _ in params).sqrt() < NORM_FLOOR}
+
+
+def describe_drift(drift, change, floored=()):
     scalars = " ".join(f"{k} {v:+.4g}" for k, v in drift.items())
-    modules = " ".join(f"{k} {v:.3g}" for k, v in change.items())
+    modules = " ".join(f"{k}{'*' if k in floored else ''} {v:.3g}" for k, v in change.items())
     return (f"Scalar drift  : {scalars}\n"
-            f"Weight change : {modules} (||W - W0|| / ||W0||)")
+            f"Weight change : {modules} (||W - W0|| / max(||W0||, {NORM_FLOOR:g}); "
+            f"* = ||W0|| below the floor)")
