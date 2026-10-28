@@ -58,6 +58,17 @@ def main():
     )
 
     parser.add_argument(
+        "--cache-dir", type=str, default=CACHE_DIR,
+        help="Directory of the hypothesis caches (default config.CACHE_DIR).",
+    )
+
+    parser.add_argument(
+        "--ckpt-dir", type=str, default=CKPT_DIR,
+        help="Directory for checkpoints and result files (default "
+             "config.CKPT_DIR). A run resumes from the files here.",
+    )
+
+    parser.add_argument(
         "--no-test", action="store_true",
         help="Skip held-out test evaluation (validation only).",
     )
@@ -92,6 +103,8 @@ def main():
     if args.mode == "train":
 
         run_training(
+            cache_dir=args.cache_dir,
+            ckpt_dir=args.ckpt_dir,
             seed=args.seed,
             epochs=args.epochs,
             train_samples=args.train_samples,
@@ -105,8 +118,8 @@ def main():
     elif args.mode == "ablation":
 
         run_ablation_suite(
-            cache_dir=CACHE_DIR,
-            ckpt_dir=CKPT_DIR,
+            cache_dir=args.cache_dir,
+            ckpt_dir=args.ckpt_dir,
             seeds=tuple(args.seeds),
             epochs=args.epochs,
             train_samples=args.train_samples,

@@ -66,6 +66,17 @@ def test_cli_defaults_and_capstone_flags(cli, mode):
     assert tuple(capstone[k] for k in keys) == ("ARC-Challenge", 8, 80, 20)
 
 
+@pytest.mark.parametrize("mode", ["train", "ablation"])
+def test_cli_cache_and_checkpoint_directories(cli, mode):
+    from config import CACHE_DIR, CKPT_DIR
+
+    default = cli("--mode", mode)
+    assert (default["cache_dir"], default["ckpt_dir"]) == (CACHE_DIR, CKPT_DIR)
+
+    given = cli("--mode", mode, "--cache-dir", "/drive/cache", "--ckpt-dir", "/drive/ckpt")
+    assert (given["cache_dir"], given["ckpt_dir"]) == ("/drive/cache", "/drive/ckpt")
+
+
 def test_stale_names_are_gone_from_tracked_code():
     files = subprocess.run(
         ["git", "-C", REPO_ROOT, "ls-files", "*.py"],

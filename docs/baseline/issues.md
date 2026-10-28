@@ -1325,7 +1325,7 @@ part of C2.
   mutations each fail it.
 
 ### E12 — A training step takes 69.9 s on the T4 (PennyLane per-row circuit execution)
-- **Category:** E · **Severity:** Critical (blocks Step 7: 20 epochs ≈ 58.5 h per run) · **Status:** **fixed 2026-10-28**: branch `e12-torch-statevector` reviewed in full and merged (`b548095`); T4 step time to be measured
+- **Category:** E · **Severity:** Critical (blocks Step 7: 20 epochs ≈ 58.5 h per run) · **Status:** **closed 2026-10-29**: merged `b548095` (follow-up `2f30e39`); T4 measured at 1.514 s/step (was 69.9 s)
 - **Evidence (T4, user, commit `44fc12a`):** `smoke_timing.py` measured
   70 s per train step (batch 16) and 0.58 s per question for generation,
   i.e. one epoch (141 steps) ≈ 176 min [DERIVED there].
@@ -1405,6 +1405,42 @@ part of C2.
 - **Interim option without code change:** `QUANTUM_DEVICE="lightning.qubit"`
   on Colab. At the M4's 0.86 s/step and a 2–4× slower Colab CPU
   [ASSUMPTION], ≈ 2–4 s/step, ≈ 2.5–4.5 h per 20-epoch run.
+- **T4 measurement (user, commit `2f30e39`, session
+  `20261028_170721_2f30e39`, smoke cache 20 train / 10 validation)
+  [VERIFIED by the user's cell 4–7 output]:**
+  - train step **1.514 s** (was 69.9 s); [DERIVED there] one epoch ≈ 3.6 min,
+    20 epochs ≈ 1.21 h. The smoke run times only 2 steps, so start-up is in
+    the mean. The estimate above (0.05–0.15 s) was 10× too low. By the
+    cell-6 timing below, the circuit is now ≲ 0.1 s of the step [DERIVED:
+    2 passes × 0.024 s plus backward]; where the rest goes is not profiled
+    [HYPOTHESIS: the rest of the model and the per-step diagnostics on
+    Colab's 2 vCPUs].
+  - determinism pair: IDENTICAL under the torch engine (strict mode).
+  - torch statevector vs `lightning.qubit`: max difference 1.9e-6 (weight
+    gradient; the reference is float32). Seconds per 128-row pass: torch
+    0.024, `lightning.gpu` 41.1, so the 69.9 s step was `lightning.gpu`'s
+    per-row cost (hypothesis (1) above).
+  - end to end: the 1-epoch smoke run reproduces the PennyLane-engine run
+    (train loss 1.6301 vs 1.6302, validation 0.40, identical diagnostics).
+  - E10 follow-up: the fusion weight-change metric reads 0.707 with the
+    norm floor (was 7.07e+08).
+- **Closed:** Step 7 is no longer blocked; its run plan uses 1.514 s/step.
+
+### E13 — The torch circuit engine fails on Apple-Silicon MPS (float64)
+- **Category:** E · **Severity:** Low (local development only; Colab uses CUDA) · **Status:** open, found 2026-10-29
+- **Evidence [VERIFIED: local dry run of the Step 7 notebook, torch 2.11.0, Apple M4]:**
+  `python main.py --mode ablation …` on a Mac raises `TypeError: Cannot
+  convert a MPS Tensor to float64 dtype` in `models/statevector.py`
+  `run_circuit` (`inputs.double()`), because `config.resolve_device()`
+  prefers `mps` and the engine computes in float64. The tests do not see it:
+  they force `device = "cpu"`. CUDA supports float64, so the T4 is unaffected
+  (smoke run above).
+- **Also stale:** the `resolve_device` docstring still says the circuit always
+  runs on `lightning.qubit` on the CPU; since E12 it runs on the model's device.
+- **Options (not implemented; a choice of numerics on one device):** run the
+  circuit on the CPU when the model is on `mps`, or compute in complex64 on
+  `mps` only (float32 tolerances, already tested at ≤ 1e-5). Or skip `mps` in
+  `resolve_device`. Workaround now: run locally with the CPU device.
 
 ### Note for every training run
 **Always commit before starting a training run; the code fingerprint ignores untracked .py files.**

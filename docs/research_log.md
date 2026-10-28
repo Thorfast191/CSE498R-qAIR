@@ -503,3 +503,30 @@ fix commit cannot name itself.
 - **Follow-up:** `quantum_simulator` compared on resume and recorded in the
   manifest; cell 7 prints a torch-engine verdict line. 352 passed, 2 skipped.
 - **Next:** T4 smoke timing at the follow-up commit (cells 0–7).
+
+## 2026-10-29 — E12 measured on the T4 (closed); Step 7 notebook
+
+- **T4 smoke run (user, commit `2f30e39`, session `20261028_170721_2f30e39`,
+  smoke cache 20 train / 10 validation, torch circuit engine):** train step
+  1.514 s (was 69.9 s), [DERIVED] one epoch ≈ 3.6 min, 20 epochs ≈ 1.21 h.
+  Determinism pair IDENTICAL. Torch statevector vs `lightning.qubit`: max
+  difference 1.9e-6 (weight gradient, float32); seconds per 128-row pass
+  torch 0.024, `lightning.gpu` 41.1. The 1-epoch smoke run reproduces the
+  PennyLane-engine run (train loss 1.6301 vs 1.6302, validation 0.40,
+  identical diagnostics). Fusion weight-change metric 0.707 with the norm
+  floor. E12 closed.
+- **Step 7 code:** `scripts/step7_runs.py` (sessions 1–4 = F0, A3, P0, P1 ×
+  seeds 0/1/2, session 5 = baselines; cache hashes checked against the
+  canonical manifest before training; finished runs never started again;
+  status table); `main.py --cache-dir/--ckpt-dir`;
+  `notebooks/cse498r_step7_baseline.ipynb`. No training run yet.
+- **Local dry run (CPU, fake 29/19/23-question cache, all five sessions,
+  real Qwen for the letter pick):** session 3 killed after its second
+  epoch resumed from epoch 2; re-running session 1 skipped its three
+  finished runs; the stats cell refused before every run was done and then
+  printed both PD-14 families. Numbers from the fake cache mean nothing and
+  are not reported.
+- **Found:** E13, the torch engine raises on Apple-Silicon MPS (float64);
+  CUDA unaffected.
+- **Tests:** 365 passed, 2 skipped (torch 2.11.0 CPU); 4 mutations of
+  `step7_runs.py` each fail ≥ 1 test.
