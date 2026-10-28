@@ -110,3 +110,37 @@ def write_manifest(path, manifest):
     with open(path, "w") as f:
         json.dump(manifest, f, indent=2, sort_keys=True)
         f.write("\n")
+
+
+def build_cache_manifest(datasets, arc_config):
+    """
+    The manifest of a cache build (no training run): the code and
+    environment that read it, and one cache_record per split.
+    datasets: {split: QAIRDataset}.
+    """
+
+    from training.checkpoint import code_provenance
+    from training.environment import environment_record
+
+    code = code_provenance()
+    environment, environment_info = environment_record()
+    caches = {split: cache_record(ds) for split, ds in datasets.items()}
+
+    manifest = {
+        "manifest_version": MANIFEST_VERSION,
+        "kind": "cache_build",
+        "git_commit": code["git_commit"],
+        "dirty": code["code_diff_sha256"] is not None,
+        "code_sha256": code["code_sha256"],
+        "code_diff_sha256": code["code_diff_sha256"],
+        "dataset": {
+            "name": DATASET,
+            "config": arc_config,
+            "split_sizes": {split: c["n_samples"] for split, c in caches.items()},
+        },
+        "caches": caches,
+        "environment": environment,
+        "environment_info": environment_info,
+    }
+
+    return json.loads(json.dumps(manifest))

@@ -387,3 +387,26 @@ fix commit cannot name itself.
   --val-samples 20`. `tests/test_defaults.py` covers both flags in both
   modes; 3 mutations (one per pass-through dropped) each fail 1 test.
   `python -m pytest tests -q` → 256 passed, 1 skipped in 151.24 s.
+
+## 2026-10-28 — Step 6 notebook prepared (not run)
+
+- **Files:** `notebooks/cse498r_baseline.ipynb` (new), `scripts/t4_checks.py`
+  (new, E10), `scripts/cache_manifest.py` (new, E6),
+  `training/manifest.py` (`build_cache_manifest`), `tests/test_t4_checks.py`
+  (new, 10 tests), `tests/test_manifest.py` (+2 tests).
+- **Decisions applied (user, 2026-10-28):** cell list approved; torch pin
+  committed after cells 0–3 report Colab's version; the cache-quality gate
+  runs on train and validation only (test built, never gated); strict
+  determinism raising stops the notebook, no automatic retry; a
+  non-reproducible `lightning.gpu`, or one beyond float rounding of
+  `lightning.qubit`, is reported and decided then.
+- **Found while writing it:** `QAIRDataset` prints the `[CACHE QUALITY]`
+  block every time a split is loaded (`training/dataset.py:228,244,565`),
+  including the test split, so `build_cache.py --splits test` and every
+  `run_training` with a test cache show zero-shot test numbers. The notebook
+  hides the test block from the cell output (kept in `build_test.log`) and
+  `cache_manifest.py` suppresses it. Whether to stop printing it for the
+  test split in the code is an open decision (HANDOFF.md).
+- **Nothing ran on a GPU.** Notebook code cells were parsed and the output
+  helper exercised locally; the scripts are tested on CPU with fakes.
+- **Tests:** `python -m pytest tests -q` → 268 passed, 1 skipped in 161.41 s (exit 0).

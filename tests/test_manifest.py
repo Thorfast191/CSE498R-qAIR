@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 
 import pytest
 
@@ -140,3 +141,41 @@ def test_grid_arm_writes_a_manifest(tmp_path, smoke_cache):
     assert manifest["arm"] == "A1_baseline"
     assert manifest["quantum_device"] is None          # no circuit in A1
     assert results["A1_baseline"][0]["history"]["manifest"] == manifest
+
+
+def cache_manifest_script():
+    sys.path.insert(0, os.path.join(REPO_ROOT, "scripts"))
+    import cache_manifest
+
+    return cache_manifest
+
+
+def test_cache_build_manifest(tmp_path, smoke_cache, capsys):
+    cache_manifest = cache_manifest_script()
+    out = tmp_path / "cache_manifest.json"
+    cache_manifest.main(["--cache-dir", str(smoke_cache), "--arc-config", ARC,
+                         "--splits", "train", "validation", "--out", str(out)])
+
+    with open(out) as f:
+        manifest = json.load(f)
+
+    assert manifest["kind"] == "cache_build"
+    code = code_provenance()
+    assert manifest["git_commit"] == code["git_commit"]
+    assert manifest["dirty"] is (code["code_diff_sha256"] is not None)
+    assert manifest["environment"]["torch"]
+    assert set(manifest["caches"]) == {"train", "validation"}
+    for split, cache in manifest["caches"].items():
+        assert cache["file_sha256"] == sha256(cache["path"])
+        assert cache["header"]["complete"] is True
+        assert manifest["dataset"]["split_sizes"][split] == cache["n_samples"]
+    assert "[CACHE QUALITY" not in capsys.readouterr().out
+
+
+def test_cache_build_manifest_refuses_a_missing_split(tmp_path, smoke_cache):
+    cache_manifest = cache_manifest_script()
+    out = tmp_path / "cache_manifest.json"
+    with pytest.raises(RuntimeError, match="test cache cannot satisfy"):
+        cache_manifest.main(["--cache-dir", str(smoke_cache), "--arc-config", ARC,
+                             "--splits", "train", "test", "--out", str(out)])
+    assert not out.exists()

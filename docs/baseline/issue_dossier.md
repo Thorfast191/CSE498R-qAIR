@@ -1649,7 +1649,8 @@ B8 (budget) ─→ C2 conclusions about ρ;  C6 ─→ C7
    determinism flag and the environment hash.
    **Status 2026-10-27: Phase 2 closed on CPU** (E6 `eb855a2`, E5 `fa24deb`,
    E8 script `6f99a49`, E9 `6802e75`); T4 measurements and the cache build are
-   in the Step 6 notebook.
+   in the Step 6 notebook (`notebooks/cse498r_baseline.ipynb`, written
+   2026-10-28 with `scripts/t4_checks.py` and `scripts/cache_manifest.py`).
 3. **Phase 3:** B4, B5 → B6 → B3, B7 → B11 (measurement) → full-split 3-seed
    runs (closes B1, B2, B8, B10).
    *Change:* B11 is measurement-only; it can ride along with the Phase-3 runs.

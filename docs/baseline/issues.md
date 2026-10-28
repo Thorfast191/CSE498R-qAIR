@@ -674,6 +674,13 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
   3 failing determinism tests because a piped `pytest | tail` hid the exit
   code. The cause was a `created_utc` timestamp that made same-seed histories
   differ; it was removed and the unpushed commit amended to `eb855a2`.
+- **Cache-build manifest (2026-10-28, Step 6):** `build_cache_manifest` in
+  `training/manifest.py` and `scripts/cache_manifest.py` write the manifest
+  of a cache build without a training run (`"kind": "cache_build"`: commit,
+  dirty flag, code hash, environment, one `cache_record` per split). It
+  refuses an incomplete cache and suppresses the loader's cache-quality
+  blocks, so it never shows test-split numbers. Notebook cell 10;
+  `tests/test_manifest.py` +2 tests.
 
 ### E7 — A capped cache can silently restart hours of LLM generation
 - **Severity:** Medium→High for the cache build · **Status:** **fixed** in `6aa20a5` · **Phase 1, item 2**
@@ -892,6 +899,14 @@ as measurement only; D5 in Phase 4; C6/C7 for the supervisor).
   `--deterministic-warn-only`, which is recorded and compared). The
   PennyLane `lightning.gpu` device is outside torch's determinism controls
   and may have its own nondeterminism [ASSUMPTION]; that run checks it.
+- **Prepared 2026-10-28 (not yet run on a T4):** `scripts/t4_checks.py`
+  `determinism` (two same-seed 1-epoch runs in separate folders; compares
+  histories, best-checkpoint parameters and per-example validation
+  predictions and scores; exits 2 and records the error if strict mode
+  raises, no retry) and `quantum` (the circuit twice on `lightning.gpu`,
+  outputs and gradients bit for bit, plus the largest difference from
+  `lightning.qubit`; exits 3 if the device cannot be built). Notebook cells
+  5–6. `tests/test_t4_checks.py` (10 tests, CPU); 9 mutations each fail ≥ 1.
 
 ### E11 — Environment not pinned; resolver conflicts in the v46 run
 - **Category:** E · **Severity:** Medium · **Status:** **fixed except the torch pin** in `4c4a766`; torch pin pending (Step 6)
@@ -931,6 +946,12 @@ as measurement only; D5 in Phase 4; C6/C7 for the supervisor).
      per grid arm, in the grid summary, stored in each grid result entry
      (`environment`), and `history["provenance"]` is saved in every
      history and returned result.
+- **Step 6 notebook (2026-10-28):** cells 2–3 print torch, `torch.version.cuda`,
+  the GPU and the full `pip freeze` before installing; uninstall diffusers,
+  gradio, jax, jaxlib; install `requirements.txt` with torch held at Colab's
+  version by a constraint (never reinstalled; a changed torch stops the
+  notebook); run `pip check`; print the pip-freeze sha256 and
+  `packages_sha256`. The torch pin is committed from that output.
 - **Test evidence:** `tests/test_environment.py` 7 passed: pin parsing
   (extras, comments, bare names); the repo leaves torch unpinned; matching
   pins pass; a runtime mismatch raises and the override records it, while
