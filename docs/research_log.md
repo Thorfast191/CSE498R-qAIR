@@ -410,3 +410,18 @@ fix commit cannot name itself.
 - **Nothing ran on a GPU.** Notebook code cells were parsed and the output
   helper exercised locally; the scripts are tested on CPU with fakes.
 - **Tests:** `python -m pytest tests -q` → 268 passed, 1 skipped in 161.41 s (exit 0).
+
+## 2026-10-28 — Torch pin, review changes, Colab conflicts
+
+- **Colab (user, cell 2):** torch 2.11.0+cu130, CUDA 13.0, Tesla T4;
+  transformers 5.20.2, huggingface_hub 1.33.0, accelerate 1.15.0, datasets
+  4.8.5, sentence-transformers 5.7.0 preinstalled. Cell 3's real output was
+  not pasted.
+- **Changes:** `torch==2.11.0+cu130` with a CPU-build rule; `[CACHE QUALITY]`
+  not printed for the test split (`tests/test_test_split_quality.py`);
+  `lightning.gpu` probed before use, fallback reason in the manifest; cell 3
+  classifies every `pip check` complaint; cell 7 prints one verdict line per
+  check.
+- **Expected conflicts [DERIVED]:** see issues.md E11 (simulated; to confirm).
+- **Tests:** a new venv with torch 2.11.0 (CPU, macOS arm64) and the other
+  pins: `python -m pytest tests -q` → 283 passed, 1 skipped in 164.98 s.

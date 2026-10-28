@@ -907,9 +907,20 @@ as measurement only; D5 in Phase 4; C6/C7 for the supervisor).
   outputs and gradients bit for bit, plus the largest difference from
   `lightning.qubit`; exits 3 if the device cannot be built). Notebook cells
   5–6. `tests/test_t4_checks.py` (10 tests, CPU); 9 mutations each fail ≥ 1.
+- **CUDA 13 fallback (2026-10-28):** Colab now runs CUDA 13; the
+  pennylane-lightning-gpu 0.42.0 build targets CUDA 12. `_build_device` runs
+  one gate on `lightning.gpu` before using it (`_probe`), so a device that
+  constructs but cannot execute also falls back to `lightning.qubit` under
+  `QUANTUM_DEVICE="auto"` (explicit `"lightning.gpu"` still raises). The
+  manifest records `quantum_device` and the new `quantum_device_fallback`
+  (the reason). The notebook's GPU-simulator install no longer stops the
+  notebook when it fails. `tests/test_quantum_device_fallback.py` (5 tests);
+  6 mutations each fail ≥ 1. The CPU forward pass is unchanged (no probe on
+  `lightning.qubit`; the full suite, including the bit-identical forward
+  tests, passes).
 
 ### E11 — Environment not pinned; resolver conflicts in the v46 run
-- **Category:** E · **Severity:** Medium · **Status:** **fixed except the torch pin** in `4c4a766`; torch pin pending (Step 6)
+- **Category:** E · **Severity:** Medium · **Status:** **fixed** in `4c4a766`; torch pinned 2026-10-28 to `2.11.0+cu130` (Colab T4, CUDA 13.0)
 - **Evidence:** cell 8: `huggingface-hub 0.33.4` incompatible with
   `diffusers 0.39.0` / `gradio 6.20.0`; cell 10: PennyLane warns about JAX
   0.7.2 > 0.6.2; `requirements.txt:1` leaves torch unpinned.
@@ -952,6 +963,26 @@ as measurement only; D5 in Phase 4; C6/C7 for the supervisor).
   version by a constraint (never reinstalled; a changed torch stops the
   notebook); run `pip check`; print the pip-freeze sha256 and
   `packages_sha256`. The torch pin is committed from that output.
+- **Torch pin (2026-10-28):** Colab cell 2 reported torch `2.11.0+cu130`,
+  `torch.version.cuda` 13.0, Tesla T4; `requirements.txt` pins
+  `torch==2.11.0+cu130`. `matches_pin`: a CUDA build must match exactly; a
+  CPU-only build (`torch.version.cuda is None`) passes on the public version,
+  so the CPU test suite runs on torch 2.11.0 (283 passed, 1 skipped).
+  `tests/test_environment.py` +9 cases.
+- **Colab pip conflicts (2026-10-28) [DERIVED]:** simulated from the cell-2
+  freeze and PyPI metadata (Linux markers): cell 3's install downgrades
+  transformers 5.20.2→4.52.4, huggingface_hub 1.33.0→0.33.4, accelerate
+  1.15.0→1.7.0, datasets 4.8.5→3.6.0, tokenizers 0.23.3→0.21.4, fsspec,
+  dill, multiprocess, scikit-learn, networkx, plotly, umap-learn, matplotlib.
+  Remaining conflicts, all unused by qAIR (not in the dependency closure of
+  its packages): gcsfs (fsspec), gradio-client (hub ≥ 1.16), then bigframes,
+  hf-gradio; dopamine-rl needs flax. ipython lacks `jedi` before anything is
+  installed (Colab kernel, kept). sentence-transformers 5.7.0 accepts
+  `transformers>=4.41,<6` and `huggingface-hub>=0.23`; qAIR does not import it
+  (the encoder uses `transformers.AutoModel`), so it is not pinned. Cell 3
+  now uninstalls every unused package `pip check` complains about, keeps
+  and documents Colab kernel packages, and stops if a package qAIR needs
+  complains. To confirm with the real cell 3 output.
 - **Test evidence:** `tests/test_environment.py` 7 passed: pin parsing
   (extras, comments, bare names); the repo leaves torch unpinned; matching
   pins pass; a runtime mismatch raises and the override records it, while

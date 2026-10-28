@@ -933,6 +933,13 @@ class QAIRDataset(Dataset):
         if not self.samples:
             return
 
+        # The block decides whether a cache is usable; showing it for the
+        # test split would invite selecting on test (CLAUDE.md rule 5).
+        if split == "test":
+            print(f"[CACHE QUALITY test / {self.arc_config}] not printed: "
+                  f"the test split is never gated.")
+            return
+
         n_total = len(self.samples)
 
         header = f"[CACHE QUALITY {split} / {self.arc_config}]"

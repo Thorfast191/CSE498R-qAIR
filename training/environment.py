@@ -7,9 +7,12 @@ E11 -- the software environment as a recorded, checked input of every run.
   * environment_record: versions that decide the computation (compared on
     resume) and everything else installed (recorded only).
 
-torch is not pinned yet: the pin is set from what Colab ships on a T4 in
-the Step 6 notebook. Until then torch is recorded and compared on resume,
-but not checked against requirements.txt.
+torch is pinned to the build Colab ships on a T4 (Step 6, 2026-10-28),
+local CUDA label included (e.g. 2.11.0+cu130). A CUDA build must match it
+exactly; a CPU-only build (torch.version.cuda is None, as on a laptop
+running the tests) passes when the public version matches, since there is
+no CPU build carrying a CUDA label. environment_record still records the
+exact build and CUDA version either way.
 """
 
 import hashlib
@@ -71,6 +74,19 @@ def installed_version(name):
         return None
 
 
+def matches_pin(name, pinned, installed):
+    """installed == pinned, except a CPU-only torch build of the pinned public version."""
+
+    if installed == pinned:
+        return True
+
+    return (
+        normalize(name) == "torch" and installed is not None and "+" in pinned
+        and torch.version.cuda is None
+        and installed.split("+")[0] == pinned.split("+")[0]
+    )
+
+
 def check_pins(override=False, path=None):
     """
     Raises EnvironmentMismatchError when a pinned runtime package is missing
@@ -85,8 +101,13 @@ def check_pins(override=False, path=None):
          "installed": installed_version(name)}
         for name in RUNTIME_PACKAGES
         if normalize(name) in pins
-        and installed_version(name) != pins[normalize(name)]
+        and not matches_pin(name, pins[normalize(name)], installed_version(name))
     ]
+
+    torch_pin = pins.get("torch")
+    if torch_pin and installed_version("torch") != torch_pin and not mismatches:
+        print(f"[ENV] torch {installed_version('torch')} is the CPU-only build of the "
+              f"pinned {torch_pin}")
 
     unpinned = [n for n in RUNTIME_PACKAGES if normalize(n) not in pins]
 

@@ -50,8 +50,31 @@ def test_parse_pins_reads_only_exact_pins(tmp_path):
     }
 
 
-def test_repository_pins_leave_torch_unpinned():
-    assert "torch" not in parse_pins()
+def test_repository_pins_torch_to_the_colab_build():
+    assert parse_pins()["torch"] == "2.11.0+cu130"
+
+
+@pytest.mark.parametrize("cuda, installed, ok", [
+    (None, "2.11.0+cu130", True),     # exact
+    (None, "2.11.0", True),           # macOS CPU wheel
+    (None, "2.11.0+cpu", True),       # Linux CPU wheel
+    (None, "2.12.0", False),          # CPU build, other version
+    ("13.0", "2.11.0+cu130", True),
+    ("12.6", "2.11.0+cu126", False),  # CUDA build, other CUDA label
+    ("13.0", "2.11.0", False),
+    (None, None, False),              # not installed
+])
+def test_torch_pin_cpu_build_rule(monkeypatch, cuda, installed, ok):
+    from training import environment
+
+    monkeypatch.setattr(environment.torch.version, "cuda", cuda)
+    assert environment.matches_pin("torch", "2.11.0+cu130", installed) is ok
+
+
+def test_cpu_rule_is_torch_only():
+    from training.environment import matches_pin
+
+    assert not matches_pin("transformers", "4.52.4+x", "4.52.4")
 
 
 def test_matching_pins_pass(tmp_path):

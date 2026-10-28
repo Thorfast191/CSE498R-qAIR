@@ -1,8 +1,9 @@
 # torch is pinned to exactly what Colab ships on a T4, recorded by the
-# Step 6 notebook (E11). Until then training/environment.py records torch
-# (and compares it on resume) but does not check it against this file.
-# Never force-reinstall torch on Colab.
-torch
+# Step 6 notebook on 2026-10-28 (E11): torch 2.11.0+cu130, CUDA 13.0.
+# A CPU-only build of 2.11.0 also passes the startup check (tests on a
+# laptop; training/environment.py matches_pin). The notebook installs this
+# file with torch held at Colab's build. Never force-reinstall torch.
+torch==2.11.0+cu130
 
 transformers==4.52.4
 accelerate==1.7.0
@@ -23,6 +24,11 @@ pennylane-lightning==0.42.0
 # On a CUDA-capable machine (e.g. Colab's GPU runtime -- see
 # notebooks/qAIR_v45.ipynb §4):
 #     pip install pennylane-lightning[gpu]==0.42.0
+#
+# Colab moved to CUDA 13 (2026-10-28); the 0.42.0 GPU build targets CUDA 12.
+# If it cannot install or run, the layer falls back to lightning.qubit
+# (checked by running one gate) and the manifest records why
+# (quantum_device, quantum_device_fallback).
 
 scikit-learn==1.7.0
 matplotlib==3.10.3

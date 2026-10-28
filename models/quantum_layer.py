@@ -30,6 +30,22 @@ def _try_construct(name, n_qubits):
         return qml.device(name, wires=n_qubits)
 
 
+def _probe(dev):
+    """
+    Runs one gate on dev. lightning.gpu can construct and still fail on its
+    first execution, e.g. a CUDA 12 cuStateVec build on a CUDA 13 runtime
+    (Colab, 2026-10-28); without this the run would crash mid-epoch instead
+    of falling back.
+    """
+
+    @qml.qnode(dev)
+    def circuit():
+        qml.RY(0.3, wires=0)
+        return qml.expval(qml.PauliZ(0))
+
+    circuit()
+
+
 def _build_device(n_qubits, preference, verbose):
     """
     Resolves which PennyLane device actually backs the circuit. See
@@ -56,6 +72,8 @@ def _build_device(n_qubits, preference, verbose):
 
         try:
             dev = _try_construct(name, n_qubits)
+            if name == "lightning.gpu":
+                _probe(dev)
 
         except Exception as e:
 
@@ -84,7 +102,11 @@ def _build_device(n_qubits, preference, verbose):
         if verbose:
             print(f"[QuantumEvolutionLayer] device: {name}")
 
-        return dev, name
+        # Why the preferred device was not used (None when it was); the
+        # run manifest records it next to the device name.
+        fallback = errors[-1] if errors else None
+
+        return dev, name, fallback
 
     if preference != "auto":
         raise RuntimeError(
@@ -156,7 +178,9 @@ class QuantumEvolutionLayer(nn.Module):
             nn.Linear(dim, n_qubits),
         )
 
-        dev, self.device_name = _build_device(n_qubits, quantum_device, verbose)
+        dev, self.device_name, self.device_fallback = _build_device(
+            n_qubits, quantum_device, verbose
+        )
 
         @qml.qnode(dev, interface="torch")
         def circuit(inputs, weights):

@@ -25,7 +25,8 @@ RUN = run_key("qair", ARC, 42)
 REQUIRED = {
     "git_commit", "dirty", "code_sha256", "code_diff_sha256", "caches",
     "dataset", "seed", "deterministic", "deterministic_warn_only", "device",
-    "device_name", "quantum_device", "environment", "environment_info",
+    "device_name", "quantum_device", "quantum_device_fallback", "environment",
+    "environment_info",
     "pin_check", "model_config", "train_config", "parameter_counts",
 }
 

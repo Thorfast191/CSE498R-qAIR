@@ -94,6 +94,11 @@ def build_manifest(provenance, run_name, loaders, model, device):
         # Only quantum arms have a circuit; the classical-control layer
         # and the no-bottleneck arms record None.
         "quantum_device": getattr(getattr(model, "quantum", None), "device_name", None),
+        # Why lightning.gpu was not used, when QUANTUM_DEVICE="auto" fell
+        # back to lightning.qubit (None otherwise).
+        "quantum_device_fallback": getattr(
+            getattr(model, "quantum", None), "device_fallback", None
+        ),
         "environment": provenance["environment"],
         "environment_info": provenance["environment_info"],
         "pin_check": provenance["pin_check"],
