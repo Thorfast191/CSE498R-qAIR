@@ -32,7 +32,9 @@ Three baselines and one cache-level check, cheapest first:
                   do much better, so a qAIR number below these is a
                   problem with qAIR, not with the task.
 
-                  Measured on the v44 cache (merged ARC, validation):
+                  Since B7 the epoch count is chosen on a train holdout
+                  and validation is evaluated once. Measured on the v44
+                  cache before B7 (best epoch on validation, optimistic):
                       O only                      0.3585
                       diag(H_n, O_n)              0.3527
                       full pairwise H_k x O_n     0.3979
@@ -43,12 +45,24 @@ Three baselines and one cache-level check, cheapest first:
                   and should reproduce --mode llm exactly; kept as a
                   check that the cached scores are what they claim to be.
 
-  --mode all      llm + asymmetry + probe.
+  --mode vote     Evidence-weighted majority vote over the cached
+                  hypotheses (B5). Free, no parameters.
+
+  --mode letter   LLM letter pick (B4): the generator sees the question and
+                  all lettered options; the answer is the letter with the
+                  highest next-token probability. Needs the LLM.
+
+  --mode all      llm + asymmetry + probe + vote.
+
+--out-dir writes the per-item records of llm, vote and letter as JSON
+(evaluation/stats.py and the Step 7 tables read them).
 
     python -m evaluation.baselines --mode all --split validation
 """
 
 import argparse
+import json
+import os
 
 import torch
 import torch.nn as nn
@@ -107,6 +121,182 @@ def run_cached_llm_baseline(cache_dir, split="validation", max_samples=None,
     )
 
     return acc, records
+
+
+# ==========================================================
+# EVIDENCE-WEIGHTED MAJORITY VOTE  (B5; free, no parameters)
+# ==========================================================
+
+def evidence_vote(sample):
+    """
+    Pre-registered in docs/baseline/issue_dossier.md B5 (2026-10-17),
+    before any ARC-Easy result existed:
+
+        v_n = sum_k [hyp_option_k == n] * polarity_k * cos(H_k, O_n)
+
+    i.e. support evidence for option n minus attack evidence against it,
+    every hypothesis included (fallbacks too: qAIR sees them as well).
+    With one support and one attack per option this is the cache gate's
+    "support - attack margin" statistic. A plain count vote is degenerate
+    -- sum_k polarity_k [hyp_option_k == n] = 0 for every option -- so the
+    vote is weighted by evidence. Prediction: argmax_n v_n; ties go to the
+    lowest index (torch.argmax returns the first maximum).
+    """
+
+    H = F.normalize(sample["H"].float(), dim=-1)
+    O = F.normalize(sample["O"].float(), dim=-1)
+    owner = sample["hyp_option"]
+
+    cos = (H * O[owner]).sum(-1)                        # cos(H_k, O_{option of k})
+    votes = torch.zeros(O.shape[0])
+    votes.index_add_(0, owner, sample["polarity"].float() * cos)
+    return votes
+
+
+def run_vote(cache_dir, split="validation", max_samples=None, arc_config=ARC_CONFIG):
+    """Evidence-weighted vote (B5) and, for reference, the degenerate count vote."""
+
+    ds = QAIRDataset(split=split, max_samples=max_samples, cache_dir=cache_dir,
+                     arc_config=arc_config)
+
+    predictions, records, count_records = [], [], []
+    for s in ds.samples:
+        votes = evidence_vote(s)
+        pred = int(votes.argmax().item())
+        predictions.append(pred)
+        records.append(int(pred == s["y"]))
+
+        counts = torch.zeros(len(s["options"]))
+        counts.index_add_(0, s["hyp_option"], s["polarity"].float())
+        count_records.append(int(int(counts.argmax().item()) == s["y"]))
+
+    acc = sum(records) / max(len(records), 1)
+    count_acc = sum(count_records) / max(len(count_records), 1)
+    chance = sum(1 / len(s["options"]) for s in ds.samples) / max(len(ds.samples), 1)
+
+    print(f"\n=== EVIDENCE-WEIGHTED MAJORITY VOTE (B5, {arc_config} {split}) ===")
+    print(f"  support - attack cosine vote : {acc:.4f}  ({sum(records)}/{len(records)})  "
+          f"chance {chance:.4f}")
+    print(f"  plain count vote (degenerate: all ties, picks option 0) : {count_acc:.4f}")
+
+    return acc, records, predictions
+
+
+# ==========================================================
+# LLM LETTER PICK  (B4; needs the LLM)
+# ==========================================================
+
+LETTERS = "ABCDEFGH"
+
+# Fixed before any test-split result (B4: "fix the prompt before seeing test").
+LETTER_PROMPT = (
+    "Answer the following multiple-choice question. Reply with the letter "
+    "of the correct option only.\n\n"
+    "Question: {question}\n"
+    "{options}\n"
+    "Answer:"
+)
+
+
+def letter_prompt(tokenizer, question, options):
+    """The chat-formatted prompt; the next token is the answer letter."""
+
+    lettered = "\n".join(f"{LETTERS[i]}. {option}" for i, option in enumerate(options))
+    return tokenizer.apply_chat_template(
+        [{"role": "user", "content": LETTER_PROMPT.format(question=question, options=lettered)}],
+        tokenize=False,
+        add_generation_prompt=True,
+    )
+
+
+def letter_token_ids(tokenizer, n):
+    """Token id of each of the first n letters; each must be a single token."""
+
+    ids = []
+    for letter in LETTERS[:n]:
+        tokens = tokenizer.encode(letter, add_special_tokens=False)
+        if len(tokens) != 1:
+            raise ValueError(f"letter {letter!r} is {len(tokens)} tokens for this tokenizer")
+        ids.append(tokens[0])
+    return ids
+
+
+@torch.no_grad()
+def letter_pick_scores(model, tokenizer, questions, options_list, device, batch_size=16):
+    """
+    log P(letter | prompt) at the answer position, for each option's letter.
+    Left padding, so the last position is the answer position in every row.
+    """
+
+    previous_side = tokenizer.padding_side
+    tokenizer.padding_side = "left"
+    scores = []
+
+    try:
+        for start in range(0, len(questions), batch_size):
+            qs = questions[start:start + batch_size]
+            opts = options_list[start:start + batch_size]
+            enc = tokenizer([letter_prompt(tokenizer, q, o) for q, o in zip(qs, opts)],
+                            return_tensors="pt", padding=True).to(device)
+            logprobs = torch.log_softmax(model(**enc).logits[:, -1].float(), dim=-1)
+            for row, options in enumerate(opts):
+                ids = torch.tensor(letter_token_ids(tokenizer, len(options)), device=logprobs.device)
+                scores.append(logprobs[row, ids].cpu())
+    finally:
+        tokenizer.padding_side = previous_side
+
+    return scores
+
+
+class GeneratorMismatchError(RuntimeError):
+    """The loaded LLM is not the model / revision the cache was generated with."""
+
+
+def run_letter_pick(cache_dir, split="validation", max_samples=None, arc_config=ARC_CONFIG,
+                    limit=None, generator=None):
+    """
+    B4. The generator's own model and revision: refuses when the cache
+    header records a different generator or revision.
+    """
+
+    from models.generator import HypothesisGenerator
+
+    ds = QAIRDataset(split=split, max_samples=max_samples, cache_dir=cache_dir,
+                     arc_config=arc_config)
+    samples = ds.samples[:limit] if limit else ds.samples
+
+    gen = generator or HypothesisGenerator(device=resolve_device())
+    loaded, cached = gen.provenance(), ds.provenance or {}
+    for key in ("generator", "generator_revision"):
+        if cached.get(key) and loaded.get(key) and cached[key] != loaded[key]:
+            raise GeneratorMismatchError(
+                f"{key}: cache {cached[key]!r}, loaded {loaded[key]!r}")
+
+    scores = letter_pick_scores(gen.model, gen.tokenizer, [s["question"] for s in samples],
+                                [s["options"] for s in samples], gen.device)
+
+    predictions = [int(sc.argmax().item()) for sc in scores]
+    records = [int(p == s["y"]) for p, s in zip(predictions, samples)]
+    acc = sum(records) / max(len(records), 1)
+
+    print(f"\n=== LLM LETTER PICK (B4, {loaded.get('generator')}, {arc_config} {split}) ===")
+    print(f"  letter of max next-token probability : {acc:.4f}  ({sum(records)}/{len(records)})")
+
+    return acc, records, predictions
+
+
+def write_records(out_dir, mode, split, arc_config, acc, records, predictions=None):
+    """{out_dir}/{mode}_{split}.json with the per-item records."""
+
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, f"{mode}_{split}.json")
+    with open(path, "w") as f:
+        json.dump({"mode": mode, "split": split, "arc_config": arc_config, "accuracy": acc,
+                   "n": len(records), "records": records, "predictions": predictions},
+                  f, indent=1)
+        f.write("\n")
+    print(f"  records: {path}")
+    return path
 
 
 # ==========================================================
@@ -298,6 +488,66 @@ def _zscore(x):
     return (x - x.mean(dim=1, keepdim=True)) / (x.std(dim=1, keepdim=True) + 1e-6)
 
 
+PROBE_HOLDOUT = 0.2      # fraction of train held out to choose the epoch count (B7)
+PROBE_SPLIT_SEED = 0
+
+
+def _probe_epoch(model, opt, X, y):
+    model.train()
+    perm = torch.randperm(y.numel())
+    for i in range(0, perm.numel(), 128):
+        b = perm[i:i + 128]
+        loss = F.cross_entropy(model(X[b]), y[b])
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+
+
+def _accuracy(model, X, y):
+    model.eval()
+    with torch.no_grad():
+        return (model(X).argmax(1) == y).float().mean().item()
+
+
+def _fresh_probe(n_feat, n_scalar, lr):
+    set_seed(0)
+    model = Probe(n_feat, n_scalar)
+    return model, torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
+
+
+def train_holdout_split(n):
+    """(fit, holdout) indices of the train split; fixed, independent of validation."""
+
+    perm = torch.randperm(n, generator=torch.Generator().manual_seed(PROBE_SPLIT_SEED))
+    n_hold = max(1, int(round(PROBE_HOLDOUT * n)))
+    return perm[n_hold:], perm[:n_hold]
+
+
+def fit_probe(n_feat, n_scalar, Xtr, ytr, Xva, yva, epochs, lr):
+    """
+    B7. The epoch count is chosen on a holdout of the TRAIN split (first
+    best), the probe is retrained from the same seed on all of train for
+    that many epochs, and validation is evaluated exactly once. Before B7
+    the reported number was the best validation accuracy over 60 epochs,
+    which selects on the evaluated items (optimistic, like B3).
+    """
+
+    fit, hold = train_holdout_split(ytr.numel())
+    model, opt = _fresh_probe(n_feat, n_scalar, lr)
+    holdout = []
+    for _ in range(epochs):
+        _probe_epoch(model, opt, Xtr[fit], ytr[fit])
+        holdout.append(_accuracy(model, Xtr[hold], ytr[hold]))
+    best_epochs = holdout.index(max(holdout)) + 1
+
+    model, opt = _fresh_probe(n_feat, n_scalar, lr)
+    for _ in range(best_epochs):
+        _probe_epoch(model, opt, Xtr, ytr)
+
+    return {"val_acc": _accuracy(model, Xva, yva), "epochs": best_epochs,
+            "holdout_acc": holdout[best_epochs - 1]}
+
+
 def run_probes(cache_dir, epochs=60, lr=3e-3, train_samples=None,
                val_samples=None, arc_config=ARC_CONFIG):
     """
@@ -306,6 +556,8 @@ def run_probes(cache_dir, epochs=60, lr=3e-3, train_samples=None,
     design (so a later full build can resume and finish the split), which
     means calling QAIRDataset with max_samples=None against it does not
     read 80 samples -- it starts generating the rest of the split.
+
+    epochs is the maximum; fit_probe chooses the count on a train holdout.
     """
 
     tr = _stack(QAIRDataset(
@@ -316,43 +568,24 @@ def run_probes(cache_dir, epochs=60, lr=3e-3, train_samples=None,
         arc_config=arc_config))
 
     print(f"\ntrain={tr[5].numel()}  val={va[5].numel()}  chance=0.2500")
-    print("\n=== DATA CEILING (probes on cached embeddings) ===")
+    print(f"\n=== DATA CEILING (probes on cached embeddings; epochs chosen on a "
+          f"{PROBE_HOLDOUT:.0%} train holdout, validation evaluated once) ===")
 
     out = {}
 
     for name, (n_feat, n_scalar, fn) in FEATURES.items():
 
-        set_seed(0)
-
-        model = Probe(n_feat, n_scalar)
-        opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
-
-        Xtr, ytr = fn(*tr[:5]), tr[5]
-        Xva, yva = fn(*va[:5]), va[5]
-
-        best = 0.0
-
-        for _ in range(epochs):
-            model.train()
-            perm = torch.randperm(ytr.numel())
-            for i in range(0, perm.numel(), 128):
-                b = perm[i:i + 128]
-                loss = F.cross_entropy(model(Xtr[b]), ytr[b])
-                opt.zero_grad()
-                loss.backward()
-                opt.step()
-            model.eval()
-            with torch.no_grad():
-                best = max(best, (model(Xva).argmax(1) == yva).float().mean().item())
-
-        out[name] = best
-        print(f"  {name:<28s} val acc = {best:.4f}")
+        result = fit_probe(n_feat, n_scalar, fn(*tr[:5]), tr[5], fn(*va[:5]), va[5],
+                           epochs, lr)
+        out[name] = result
+        print(f"  {name:<28s} val acc = {result['val_acc']:.4f}  "
+              f"(epochs {result['epochs']}, holdout {result['holdout_acc']:.4f})")
 
     print(
         "\n  'Q x O + support' vs 'Q x O' is the question the whole project "
         "turns on:\n  does the generated evidence add anything to the "
         "question and the options?\n  On the v44 cache it was NEGATIVE "
-        "(0.4849 -> 0.4408)."
+        "(0.4849 -> 0.4408, best-epoch-on-validation numbers, before B7)."
     )
 
     return out
@@ -418,7 +651,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--mode",
-        choices=["llm", "asymmetry", "probe", "direct", "all"],
+        choices=["llm", "asymmetry", "probe", "direct", "vote", "letter", "all"],
         default="all",
     )
     parser.add_argument("--split", type=str, default="validation")
@@ -433,6 +666,8 @@ def main():
         "--val-samples", type=int, default=None,
         help="Must match the cap the validation cache was built with.",
     )
+    parser.add_argument("--out-dir", type=str, default=None,
+                        help="Write per-item records of llm / vote / letter as JSON.")
     args = parser.parse_args()
 
     set_seed(0)
@@ -441,11 +676,28 @@ def main():
         args.val_samples if args.split == "validation" else args.train_samples
     )
 
+    def save(mode, acc, records, predictions=None):
+        if args.out_dir:
+            write_records(args.out_dir, mode, args.split, args.arc_config, acc, records,
+                          predictions)
+
     if args.mode in ("llm", "all"):
-        run_cached_llm_baseline(
+        save("llm", *run_cached_llm_baseline(
             args.cache_dir, split=args.split, max_samples=max_for_split,
             arc_config=args.arc_config,
-        )
+        ))
+
+    if args.mode in ("vote", "all"):
+        save("vote", *run_vote(
+            args.cache_dir, split=args.split, max_samples=max_for_split,
+            arc_config=args.arc_config,
+        ))
+
+    if args.mode == "letter":
+        save("letter", *run_letter_pick(
+            args.cache_dir, split=args.split, max_samples=max_for_split,
+            arc_config=args.arc_config, limit=args.limit,
+        ))
 
     if args.mode in ("asymmetry", "all"):
         run_asymmetry(
