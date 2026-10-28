@@ -46,7 +46,8 @@ def gpu_fails_to_run(monkeypatch, gpu_constructs):
 
 def layer(device="auto"):
     return quantum_layer.QuantumEvolutionLayer(MODEL_DIM, n_qubits=N_QUBITS,
-                                               quantum_device=device)
+                                               quantum_device=device,
+                                               quantum_simulator="pennylane")
 
 
 def test_gpu_that_runs_is_used(gpu_constructs):
@@ -75,8 +76,12 @@ def test_lightning_qubit_is_not_probed(monkeypatch):
     assert layer("lightning.qubit").device_fallback is None
 
 
-def test_manifest_records_device_and_reason(tmp_path, smoke_cache, gpu_fails_to_run):
+def test_manifest_records_device_and_reason(tmp_path, smoke_cache, gpu_fails_to_run,
+                                            monkeypatch):
+    import config
     from training.runner import run_training
+
+    monkeypatch.setattr(config, "QUANTUM_SIMULATOR", "pennylane")
 
     history = run_training(
         cache_dir=str(smoke_cache), ckpt_dir=str(tmp_path / "ckpt"), train_samples=16,

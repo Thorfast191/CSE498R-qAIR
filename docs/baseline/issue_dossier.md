@@ -1207,6 +1207,27 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** pinned torch may lag the Colab CUDA version; choose a compatible pin.
   **Needs supervisor approval?** No.
 
+#### E12 (new) A training step took 69.9 s on the T4: per-row circuit execution
+- **Status:** implemented 2026-10-28 on branch `e12-torch-statevector`
+  (awaiting review and merge); evidence in issues.md E12.
+- **Observation:** 0.75–0.86 s per step on CPU (Apple M4, `lightning.qubit`)
+  but 69.9 s on the T4 (`lightning.gpu`, smoke timing at `44fc12a`). On CPU
+  98 % of the step is the circuit: PennyLane's `TorchLayer` runs 512 per-row
+  tapes per step (2 circuit calls × 128 rows) with the adjoint method; the
+  per-row cost is linear in the rows (4 ms per row).
+- **Interpretation [HYPOTHESIS, reviewer's reading]:** the 80× gap between CPU
+  and T4 is per-call GPU overhead of 512 tiny per-row circuits (launch,
+  host ↔ device copies, synchronisation on a 64-amplitude state), not
+  compute. The cell-6 seconds-per-pass measurement (`t4_checks.py quantum`)
+  will confirm or refute it.
+- **Fix:** a batched torch statevector of the same circuit
+  (`models/statevector.py`, `config.QUANTUM_SIMULATOR = "torch"`), PennyLane
+  kept as reference and fallback. Both engines are exact classical simulations of the same circuit; switching between them does not change the model's mathematics.
+  It is an implementation change, not an architecture change, and not
+  bit-identical (agreement ≤ 1e-6 in float64).
+- **Needs supervisor approval?** No (same mathematics); merged only after
+  the reviewer has read the branch (user decision 2026-10-28).
+
 ### Part D — Data / input problems
 
 #### D1 The 0.5B generator's hypotheses carry no detectable signal

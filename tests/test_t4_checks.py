@@ -156,7 +156,9 @@ def test_quantum_check_on_the_reference_device(tmp_path, cpu, capsys):
     assert report["constructed_device"] == "lightning.qubit"
     assert report["reference_constructed_device"] == "lightning.qubit"
     assert report["qnode_devices"] == {"tested": "lightning.qubit", "reference": "lightning.qubit"}
+    assert set(report["seconds_per_pass"]) == {"tested", "reference", "torch_statevector"}
     assert all(s > 0 for s in report["seconds_per_pass"].values())
+    assert all(v <= 1e-5 for v in report["torch_statevector_vs_reference_max_abs_diff"].values())
     assert report["repeat_bit_identical"] == dict.fromkeys(keys, True)
     assert report["vs_reference_max_abs_diff"] == dict.fromkeys(keys, 0.0)
     assert "QUANTUM DEVICE CHECK" in capsys.readouterr().out
@@ -164,13 +166,15 @@ def test_quantum_check_on_the_reference_device(tmp_path, cpu, capsys):
 
 def test_quantum_check_sees_different_weights(tmp_path, cpu, monkeypatch):
     real = t4_checks.build_layer
-    monkeypatch.setattr(t4_checks, "build_layer", lambda name, state=None: real(name))
+    monkeypatch.setattr(t4_checks, "build_layer",
+                        lambda name, state=None, simulator="pennylane": real(name, simulator=simulator))
 
     quantum(tmp_path, "lightning.qubit")
 
     with open(tmp_path / "quantum.json") as f:
         report = json.load(f)
     assert all(v > 0 for v in report["vs_reference_max_abs_diff"].values())
+    assert all(v > 0 for v in report["torch_statevector_vs_reference_max_abs_diff"].values())
 
 
 def test_unavailable_device_is_reported(tmp_path, cpu):

@@ -145,6 +145,16 @@ PERSISTENT_STEPS = 3
 # makes the same code correct on both.
 QUANTUM_DEVICE = "auto"
 
+# Which simulator runs the circuit (issues.md E12).
+#
+#   "torch"     -- the same circuit as a batched complex128 statevector in
+#                  torch (models/statevector.py), differentiated by autograd
+#                  on the model's device. Matches PennyLane to ~1e-8 in the
+#                  outputs; ~40x faster per training step on CPU.
+#   "pennylane" -- the QNode on QUANTUM_DEVICE (one tape per row; 69.9 s
+#                  per step measured on a T4). The reference.
+QUANTUM_SIMULATOR = "torch"
+
 DROPOUT = 0.15
 
 # ==========================================================
