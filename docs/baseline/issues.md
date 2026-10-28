@@ -1303,7 +1303,7 @@ part of C2.
   mutations each fail it.
 
 ### E12 — A training step takes 69.9 s on the T4 (PennyLane per-row circuit execution)
-- **Category:** E · **Severity:** Critical (blocks Step 7: 20 epochs ≈ 58.5 h per run) · **Status:** open; fix proposed, awaiting approval (2026-10-28)
+- **Category:** E · **Severity:** Critical (blocks Step 7: 20 epochs ≈ 58.5 h per run) · **Status:** implemented 2026-10-28 on branch `e12-torch-statevector`; awaiting review, then merge (user decision 2026-10-28)
 - **Evidence (T4, user, commit `44fc12a`):** `smoke_timing.py` measured
   70 s per train step (batch 16) and 0.58 s per question for generation,
   i.e. one epoch (141 steps) ≈ 176 min [DERIVED there].
@@ -1352,6 +1352,27 @@ part of C2.
   few hundred small kernels per step; estimated 0.05–0.15 s per step, i.e.
   141 × 20 steps ≈ 2.5–7 min of training per 20-epoch run plus validation,
   to be measured by the smoke run.
+- **CPU vs T4 (recorded 2026-10-28):** 0.75 s/step on CPU (M4,
+  `lightning.qubit`) vs 69.9 s/step on the T4 (`lightning.gpu`). Reviewer's
+  reading: per-call GPU launch overhead of 512 per-row circuits, not compute
+  [HYPOTHESIS until the cell-6 seconds-per-pass measurement].
+- **Implementation (branch `e12-torch-statevector`):** `models/statevector.py`
+  (`run_circuit`, `TorchStatevectorCircuit`); `config.QUANTUM_SIMULATOR =
+  "torch"` (default) or `"pennylane"` (reference / fallback);
+  `QuantumEvolutionLayer(quantum_simulator=…)`; `device_name =
+  "torch.statevector"` in the manifest. Same parameter name (`weights`) and
+  initial draw as `TorchLayer`, so same-seed models and checkpoints are
+  interchangeable. Both engines are exact classical simulations of the same
+  circuit; the model's mathematics is unchanged.
+- **Tests on the branch:** `tests/test_torch_statevector.py` (float64 ≤ 1e-6
+  and float32 ≤ 1e-5 on outputs and input / weight gradients, 3 seeds each;
+  identical same-seed weights; full forward of all 16 arms within 1e-5);
+  `tests/test_circuit_input_dependence.py` under both engines, with the
+  X-rotation negative control; the determinism and resume suite and the v46
+  bit-identical forward tests (`test_forward_unchanged`, with the v46
+  checkpoints present) pass on the torch default; `t4_checks quantum`
+  compares and times the torch engine against `lightning.qubit`. 8 mutations
+  of the circuit maths each fail ≥ 1 test.
 - **Interim option without code change:** `QUANTUM_DEVICE="lightning.qubit"`
   on Colab. At the M4's 0.86 s/step and a 2–4× slower Colab CPU
   [ASSUMPTION], ≈ 2–4 s/step, ≈ 2.5–4.5 h per 20-epoch run.
