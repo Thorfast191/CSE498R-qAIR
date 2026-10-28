@@ -61,7 +61,7 @@ def test_report_has_every_stage(tmp_path, fakes, capsys):
     assert all(report["seconds"][s] > 0 for s in smoke_timing.STAGES)
     assert report["calls"]["generation"] >= 2 and report["calls"]["embedding"] >= 2
     assert report["calls"]["eval"] == 1 and report["train_steps"] == 1
-    assert report["quantum_device"] == "lightning.qubit"
+    assert report["quantum_device"] == "torch.statevector"   # E12 default
     assert report["projection_DERIVED"]["full_split_sizes"] == \
         {"train": 2251, "validation": 570, "test": 2376}
     assert report["projection_DERIVED"]["train_steps_per_epoch"] == 141

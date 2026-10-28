@@ -10,7 +10,8 @@ checks that this test would have caught it.
 
     python -m pytest tests/test_circuit_input_dependence.py
 
-CPU (lightning.qubit), N_QUBITS from config; needs pennylane.
+Runs under both simulators (E12): PennyLane lightning.qubit and the torch
+statevector. N_QUBITS from config; needs pennylane.
 """
 
 import math
@@ -28,12 +29,16 @@ MIN_STD = 1e-3        # DoD §2.1, per observable
 CONSTANT_STD = 1e-12  # what the v40 circuit measures (float rounding only)
 
 
-def build_layer(seed=0):
+SIMULATORS = ("pennylane", "torch")
+
+
+def build_layer(seed=0, simulator="pennylane"):
     from models.quantum_layer import QuantumEvolutionLayer
 
     torch.manual_seed(seed)
     layer = QuantumEvolutionLayer(EMBEDDING_DIM, n_qubits=N_QUBITS,
-                                  quantum_device="lightning.qubit")
+                                  quantum_device="lightning.qubit",
+                                  quantum_simulator=simulator)
     return layer.eval()
 
 
@@ -68,31 +73,38 @@ def phase_std(layer):
 def x_rotation(monkeypatch):
     """The v40 bug: AngleEmbedding with its default rotation="X"."""
 
+    import models.statevector as statevector
+
     real = qml.AngleEmbedding
 
     def angle_embedding(features, wires, rotation="X", **kwargs):
         return real(features, wires, rotation="X", **kwargs)
 
     monkeypatch.setattr(qml, "AngleEmbedding", angle_embedding)
+    monkeypatch.setattr(statevector, "ENCODING_ROTATION", "X")
 
 
+@pytest.mark.parametrize("simulator", SIMULATORS)
 @pytest.mark.parametrize("seed", WEIGHT_SEEDS)
-def test_every_observable_varies_with_the_input(seed):
-    std = circuit_std(build_layer(seed), seed)
+def test_every_observable_varies_with_the_input(seed, simulator):
+    std = circuit_std(build_layer(seed, simulator), seed)
 
     assert (std > MIN_STD).all(), f"constant observables: {std.tolist()}"
 
 
-def test_layer_phase_varies_with_the_hypothesis():
-    assert phase_std(build_layer()) > MIN_STD
+@pytest.mark.parametrize("simulator", SIMULATORS)
+def test_layer_phase_varies_with_the_hypothesis(simulator):
+    assert phase_std(build_layer(simulator=simulator)) > MIN_STD
 
 
+@pytest.mark.parametrize("simulator", SIMULATORS)
 @pytest.mark.parametrize("seed", WEIGHT_SEEDS)
-def test_x_rotation_bug_is_detected(seed, x_rotation):
-    std = circuit_std(build_layer(seed), seed)
+def test_x_rotation_bug_is_detected(seed, simulator, x_rotation):
+    std = circuit_std(build_layer(seed, simulator), seed)
 
     assert (std < CONSTANT_STD).all()
 
 
-def test_x_rotation_bug_makes_layer_phase_constant(x_rotation):
-    assert phase_std(build_layer()) < CONSTANT_STD
+@pytest.mark.parametrize("simulator", SIMULATORS)
+def test_x_rotation_bug_makes_layer_phase_constant(simulator, x_rotation):
+    assert phase_std(build_layer(simulator=simulator)) < CONSTANT_STD

@@ -6,7 +6,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import config
 from config import DROPOUT, QUANTUM_DEVICE
+from models.statevector import TorchStatevectorCircuit
 
 DEVICE_CHOICES = ("auto", "lightning.gpu", "lightning.qubit")
 
@@ -125,6 +127,10 @@ def _build_device(n_qubits, preference, verbose):
     )
 
 
+# QuantumEvolutionLayer.device_name when the torch statevector runs the circuit.
+TORCH_DEVICE_NAME = "torch.statevector"
+
+
 class QuantumEvolutionLayer(nn.Module):
     """
     Quantum evolution layer: compress -> circuit -> expand, gated back
@@ -166,7 +172,12 @@ class QuantumEvolutionLayer(nn.Module):
     """
 
     def __init__(self, dim, n_qubits=12, n_layers=3, verbose=False,
-                 quantum_device=QUANTUM_DEVICE):
+                 quantum_device=QUANTUM_DEVICE, quantum_simulator=None):
+        """
+        quantum_simulator: "torch" (batched statevector, models/statevector.py)
+        or "pennylane" (QNode on quantum_device); None reads
+        config.QUANTUM_SIMULATOR at construction (issues.md E12).
+        """
 
         super().__init__()
 
@@ -177,6 +188,22 @@ class QuantumEvolutionLayer(nn.Module):
             nn.GELU(),
             nn.Linear(dim, n_qubits),
         )
+
+        self.simulator = quantum_simulator or config.QUANTUM_SIMULATOR
+
+        if self.simulator == "torch":
+            self.device_name, self.device_fallback = TORCH_DEVICE_NAME, None
+            self.quantum = TorchStatevectorCircuit(n_qubits, n_layers)
+        elif self.simulator == "pennylane":
+            self.quantum = self._pennylane_circuit(n_qubits, n_layers, quantum_device, verbose)
+        else:
+            raise ValueError(f"quantum_simulator must be 'torch' or 'pennylane', "
+                             f"got {self.simulator!r}")
+
+        self._build_heads(dim, n_qubits, verbose)
+
+    def _pennylane_circuit(self, n_qubits, n_layers, quantum_device, verbose):
+        """The reference: a PennyLane QNode wrapped in qml.qnn.TorchLayer."""
 
         dev, self.device_name, self.device_fallback = _build_device(
             n_qubits, quantum_device, verbose
@@ -214,7 +241,9 @@ class QuantumEvolutionLayer(nn.Module):
 
         weight_shapes = {"weights": (n_layers, n_qubits, 3)}
 
-        self.quantum = qml.qnn.TorchLayer(circuit, weight_shapes)
+        return qml.qnn.TorchLayer(circuit, weight_shapes)
+
+    def _build_heads(self, dim, n_qubits, verbose):
 
         self.expand = nn.Sequential(
             nn.Linear(n_qubits * 3, dim),

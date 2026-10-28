@@ -15,10 +15,11 @@ determinism  two same-seed 1-epoch runs on a smoke cache, each in its own
              recorded and the script exits 2 -- it never retries with
              --deterministic-warn-only.
 quantum      the circuit of QuantumEvolutionLayer with identical weights
-             and inputs: twice on the device under test (outputs and
-             gradients compared bit for bit), and against lightning.qubit
-             (largest absolute differences). Exits 3 when the device under
-             test cannot be constructed.
+             and inputs: twice on the PennyLane device under test (outputs
+             and gradients compared bit for bit), against lightning.qubit
+             (largest absolute differences), and the torch statevector
+             (E12) against lightning.qubit, with seconds per pass for each.
+             Exits 3 when the device under test cannot be constructed.
 
 Both write a JSON report and only read the cache; neither decides what to
 do about a difference.
@@ -217,10 +218,11 @@ def circuit_pass(layer, z, readout, seconds=None):
     }
 
 
-def build_layer(name, state=None):
+def build_layer(name, state=None, simulator="pennylane"):
     from models.quantum_layer import QuantumEvolutionLayer
 
-    layer = QuantumEvolutionLayer(MODEL_DIM, n_qubits=N_QUBITS, quantum_device=name)
+    layer = QuantumEvolutionLayer(MODEL_DIM, n_qubits=N_QUBITS, quantum_device=name,
+                                  quantum_simulator=simulator)
     if state is not None:
         layer.load_state_dict(state)
     return layer
@@ -254,6 +256,11 @@ def run_quantum(device_name="lightning.gpu", n_inputs=128, seed=0):
     report["qnode_devices"] = {"tested": layer.quantum.qnode.device.name,
                                "reference": reference.quantum.qnode.device.name}
 
+    statevector = build_layer(REFERENCE_DEVICE, state, simulator="torch").to(device)
+    statevector_seconds = []
+    circuit_pass(statevector, z, readout, statevector_seconds)
+    from_statevector = circuit_pass(statevector, z, readout, statevector_seconds)
+
     tested_seconds, reference_seconds = [], []
     first = circuit_pass(layer, z, readout, tested_seconds)
     second = circuit_pass(layer, z, readout, tested_seconds)
@@ -261,11 +268,13 @@ def run_quantum(device_name="lightning.gpu", n_inputs=128, seed=0):
     circuit_pass(reference, z, readout, reference_seconds)
     # The second pass of each, so one-time initialisation is not counted.
     report["seconds_per_pass"] = {"tested": tested_seconds[1],
-                                  "reference": reference_seconds[1]}
+                                  "reference": reference_seconds[1],
+                                  "torch_statevector": statevector_seconds[1]}
 
     report["repeat_bit_identical"] = {k: torch.equal(first[k], second[k]) for k in first}
     report["repeat_max_abs_diff"] = max_abs(first, second)
     report["vs_reference_max_abs_diff"] = max_abs(first, expected)
+    report["torch_statevector_vs_reference_max_abs_diff"] = max_abs(from_statevector, expected)
     report["dtype"] = str(first["outputs"].dtype)
     return report
 
@@ -284,8 +293,11 @@ def print_quantum(report):
     print(f"QNode devices      : tested {report['qnode_devices']['tested']}, "
           f"reference {report['qnode_devices']['reference']}")
     print(f"seconds per pass   : tested {report['seconds_per_pass']['tested']:.3f}, "
-          f"reference {report['seconds_per_pass']['reference']:.3f} "
+          f"reference {report['seconds_per_pass']['reference']:.3f}, "
+          f"torch statevector {report['seconds_per_pass']['torch_statevector']:.4f} "
           f"({report['n_inputs']} rows, forward + backward)")
+    print("torch statevector vs " + report["reference"] + " max|d| " + ", ".join(
+        f"{k} {v:.3e}" for k, v in report["torch_statevector_vs_reference_max_abs_diff"].items()))
     for key in ("outputs", "input_grad", "weight_grad"):
         print(f"{key:<12s} repeat bit-identical {str(report['repeat_bit_identical'][key]):<5s} "
               f"repeat max|d| {report['repeat_max_abs_diff'][key]:.3e}  "

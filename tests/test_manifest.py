@@ -62,7 +62,7 @@ def test_manifest_has_every_field(trained):
         "name": "allenai/ai2_arc", "config": ARC,
         "split_sizes": {"train": 16, "validation": 8},
     }
-    assert manifest["quantum_device"] == "lightning.qubit"
+    assert manifest["quantum_device"] == "torch.statevector"   # E12 default
     assert manifest["model_config"] == history["provenance"]["model_config"]
     assert len(manifest["environment_info"]["packages_sha256"]) == 64
 
