@@ -788,6 +788,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 
 #### B5 No majority-vote-over-hypotheses baseline (mandatory)
 - **Status:** **fixed 2026-10-28** (`--mode vote`, the weighting below; issues.md B5)
+- **Note (2026-10-28):** the weighting below is pre-registered and kept. A support-only vote, motivated by the D5 finding, is exploratory / post hoc and is labelled so wherever it appears.
 - **Category / severity / blocks:** B / High / DoD §3.
 - **Observation:** absent [VERIFIED: `evaluation/baselines.py` modes `llm`,
   `asymmetry`, `probe`, `direct`].
@@ -816,6 +817,7 @@ $A_n = S_n + e^{i\rho}R_n$.
 - **Risks:** none. **Needs supervisor approval?** No.
 
 #### B6 Pooling records across seeds makes McNemar and bootstrap anti-conservative
+- **Status:** **fixed 2026-10-28** (item-level bootstrap, per-seed McNemar, Holm within the PD-14 families; issues.md B6)
 - **Category / severity / blocks:** B / High / DoD §4.2–4.3.
 - **Observation:** the code pools [VERIFIED: `evaluation/stats.py:95-100`]. It
   has not been exercised on multi-seed results yet.

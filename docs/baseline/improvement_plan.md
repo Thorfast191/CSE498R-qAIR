@@ -179,9 +179,9 @@ check 12]. Tiers 2–4 are tested only on a cache that passes the gate below.
 > at chance** (0.2554 / 0.2509; 143/570 on validation, below the gate's 164).
 > The attack channel is anti-informative and cancels the support signal
 > (first-order implied η ≈ 0.9). This makes **T1c attack verification the
-> top-priority evidence fix**. Moving T1c to the front of the staging order
-> below changes the pre-registered order (PD-3) and is proposed, not yet
-> adopted.
+> top-priority evidence fix**. **Adopted provisionally (PD-15, 2026-10-28):**
+> T1c moves to the front, T1c → T1a → T1b → T1d, a deviation from the
+> pre-registered order under PD-3 justified by this train/validation finding.
 
 ### Tier 1 pre-training gate (applies to every Tier 1 cache)
 
@@ -208,7 +208,8 @@ Each step changes one thing and is judged first at the gate level on the
 **validation split only** (570 questions; 0.2–0.5 h per cache build at 0.5B
 rates [ASSUMPTION]). A step is kept only if its gate statistic improves on the
 previous step's, by a paired test on the same 570 items (exact McNemar on
-per-item margin-vote correctness). Order: **T1a → T1b → T1c → T1d**, cumulative.
+per-item margin-vote correctness). Order: **T1c → T1a → T1b → T1d**, cumulative
+(PD-15, 2026-10-28; pre-registered order was T1a → T1b → T1c → T1d).
 Only the final adopted configuration gets a full cache (train + validation +
 test) and training runs.
 
@@ -748,7 +749,7 @@ the same as item T3b above (the ρ = π/2 init arm); it is a separate readout.
 ```
 Tier 0 (bugs, cache, baselines, 3-seed runs) ── true v46 baseline
    │
-Tier 1 gate-level staging on validation: T1a → T1b → T1c → T1d
+Tier 1 gate-level staging on validation: T1c → T1a → T1b → T1d (PD-15)
    ├─ no configuration passes the gate ─→ STOP architecture work.
    │      Report D1 as the finding; Tier 2 only as a mechanism check.
    └─ adopted cache passes ─→ full cache ─→ Tier 0′ runs (new reference)

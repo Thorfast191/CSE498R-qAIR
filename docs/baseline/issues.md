@@ -576,14 +576,36 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
   sample with known cosines gives the expected votes; shuffled hypotheses give
   the same votes; ties go to option 0; on the fake cache the accuracy equals
   the gate's margin line. Mutations (no polarity, misassigned option) fail.
+- **Pre-registration kept (user, 2026-10-28):** the weighting above is the
+  B5 baseline as pre-registered on 2026-10-17 and stays as is. Any
+  support-only vote (motivated by the attack finding, D5) is exploratory /
+  post hoc and must be labelled so.
 - **`--out-dir`:** `llm`, `vote` and `letter` write `{mode}_{split}.json` with
   per-item records and predictions (for B6 and the Step 7 tables).
 
 ### B6 — Pooling records across seeds makes McNemar/bootstrap anti-conservative
-- **Severity:** High · **Status:** open
+- **Severity:** High · **Status:** **fixed 2026-10-28** (CPU; PD-14 families)
 - **Evidence:** `evaluation/stats.py:95-100` pools `test_records` across seeds;
   `:127` runs McNemar on the pooled list; `:120` bootstraps (item, seed) cells.
   Holm is only printed (`:138-140`).
+- **Fix (decision PD-14, 2026-10-28):** `evaluation/stats.py`. `paired_bootstrap`
+  resamples items (10,000, seed 0), keeps every seed of a resampled item and
+  averages them; p is the centred bootstrap's two-sided p. `compare` adds
+  exact McNemar per seed and whether the arm is ahead in every seed. `holm`
+  adjusts within a family. `success_report` runs the primary family (F0 vs
+  {option likelihood, letter pick}, Holm over 2) and the secondary family
+  ({A3, P0, P1} × the same, Holm over 6) and prints the PD-11 verdict;
+  `python -m evaluation.stats --results … --baselines-dir …` reads the
+  `evaluation/baselines.py --out-dir` test files (refusing other splits).
+  The exploratory arm-vs-arm table no longer pools seeds either.
+- **Test evidence:** `tests/test_stats_b6.py` (11 tests): Holm step-down;
+  identical arms give p = 1, a clear win p < 0.01; items, not cells, are
+  resampled; deterministic baselines repeat across seeds and mismatched
+  lengths raise; per-seed McNemar and direction; every PD-11 condition is
+  required (including Holm, not raw p); the families are PD-14's. Simulation
+  under H0 (1000 runs, n = 200, 3 seeds, item-driven seed correlation
+  κ = 0.8): pooled McNemar rejects > 12 % (18.3 % in a 300-run check), the
+  item bootstrap 2–8 % (5.0 %). 8 mutations each fail ≥ 1 test.
 
 ### B7 — Probe "data ceiling" selects its best epoch on validation
 - **Severity:** Medium · **Status:** **fixed 2026-10-28** (CPU) · **Evidence:** `evaluation/baselines.py:333-348`.

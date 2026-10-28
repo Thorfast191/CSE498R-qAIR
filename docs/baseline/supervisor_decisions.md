@@ -44,6 +44,8 @@ becomes the code default, and the v46 baseline row stays in every table.
 | PD-11 | Primary success criterion | Primary qAIR arm beats both direct LLM baselines on full ARC-Easy test, 3 seeds, paired bootstrap with Holm correction, p < 0.05; the win has the same direction in all 3 seeds; per-seed exact McNemar p-values reported; v46 baseline reported alongside | D-11 |
 | PD-12 | Path Hamiltonian pair head | Directed pair terms per `path_hamiltonian_design.md`, with a symmetric-only head as an ablation | D-14 |
 | PD-13 | Research stopping rule | If no Tier 1 cache passes the evidence gate: report "no signal", stop architecture work, write up the negative result | D-10 (research part) |
+| PD-14 | Statistics (B6): comparison families | Two Holm families. Primary (PD-11): F0 vs {LLM option likelihood, LLM letter pick}, Holm over 2. Secondary: {A3 (v46), P0, P1} × the same two baselines, Holm over 6, reported but not used for the main claim. Per-seed exact McNemar; item-level paired bootstrap averaging the 3 seeds; PD-11's 3-seed rule alongside | D-11 (statistics part) |
+| PD-15 | Tier 1 staging order | T1c (attack verification) first: T1c → T1a → T1b → T1d. A deviation from the pre-registered order under PD-3, justified by the train/validation gate finding (implied η ≈ 0.9) | D-4 (order) |
 
 Every D-item in `improvement_plan.md` §2 now has a provisional decision.
 PD-7 to PD-12 were recorded 2026-10-19, after PD-1 to PD-6; PD-13 and the
@@ -210,6 +212,43 @@ PD-7 / PD-11 amendments later the same day.
 - *How to revert:* if the supervisor rejects it, continue Tiers 2–4 on the
   best available cache and state in every result that the cache failed the
   gate.
+
+### PD-14 — Statistics: two Holm families (B6)
+
+- *Status:* provisional — pending supervisor review. Decided by the user
+  2026-10-28, before any test-split result exists.
+- *Rule:*
+  - **Primary family (the PD-11 success criterion):** F0 vs LLM option
+    likelihood and F0 vs LLM letter pick; Holm over these 2.
+  - **Secondary family:** A3 (v46), P0 and P1 vs the same two baselines;
+    Holm over these 6. Reported, never used for the main claim.
+  - Each comparison: an item-level paired bootstrap (10,000 resamples,
+    seed 0; each resampled item keeps all 3 seeds, which are averaged), the
+    two-sided p of the centred bootstrap, and exact McNemar per seed.
+    Records are never pooled across seeds (dossier B6).
+  - PD-11 is met only if both primary comparisons have Holm-adjusted p < 0.05,
+    a positive difference, and higher accuracy in every seed.
+- *Reason:* one pre-registered primary claim keeps its error rate at 5 %
+  instead of spending the correction on comparisons that do not decide it.
+- *How to revert:* edit `evaluation/stats.py` (`PRIMARY_FAMILY`,
+  `SECONDARY_FAMILY`) before any test evaluation; afterwards a change is
+  reported as post hoc.
+
+### PD-15 — Tier 1: attack verification (T1c) first
+
+- *Status:* provisional — pending supervisor review. Decided by the user
+  2026-10-28. **A deviation from the pre-registered staging order** under
+  PD-3 (T1a → T1b → T1c → T1d).
+- *Reason:* the full Tier 0 cache's gate (train and validation only; test
+  never seen) shows support above chance (0.335 / 0.330), attack
+  disagreement below chance (0.180 / 0.172) and the support − attack margin
+  at chance; the first-order implied η is ≈ 0.9 (dossier D1, D5). The attack
+  channel cancels the support signal, so verifying attacks is the change
+  most likely to make the gate statistic informative.
+- *New order:* T1c → T1a → T1b → T1d, each still judged on validation only,
+  each a single-variable step behind its own flag; v46 generation stays
+  the default cache.
+- *How to revert:* restore the PD-3 order before any Tier 1 cache is built.
 
 ## After the supervisor's review
 

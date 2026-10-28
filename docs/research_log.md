@@ -481,3 +481,17 @@ fix commit cannot name itself.
   (ARC-Challenge), not only low power.
 - **Consequence:** T1c attack verification is the top-priority evidence fix
   (improvement_plan.md note; reordering the staging is proposed, not adopted).
+
+## 2026-10-28 — Decisions; B6; E12 review branch
+
+- **E12:** pushed for review as branch `e12-torch-statevector` (`7960dc5`
+  code, `c0c6b2d` docs; rebased on `81015be`; branch suite 339 passed, 2
+  skipped). Not merged. Docs on the branch: both engines are exact classical
+  simulations of the same circuit; CPU 0.75 s/step vs T4 69.9 s/step, read as
+  per-call GPU overhead of 512 per-row circuits [HYPOTHESIS until cell 6].
+- **PD-14 (B6 families)** and **PD-15 (T1c first)** recorded as provisional
+  in supervisor_decisions.md; B5 kept as pre-registered, any support-only
+  vote exploratory.
+- **B6 implemented:** item-level paired bootstrap averaging seeds, per-seed
+  McNemar, Holm within each family, PD-11 verdict. Simulation under H0:
+  pooled McNemar 18.3 %, item bootstrap 5.0 % (300 runs, κ = 0.8).
