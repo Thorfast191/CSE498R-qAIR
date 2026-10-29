@@ -530,3 +530,30 @@ fix commit cannot name itself.
   CUDA unaffected.
 - **Tests:** 365 passed, 2 skipped (torch 2.11.0 CPU); 4 mutations of
   `step7_runs.py` each fail ≥ 1 test.
+
+## 2026-10-30 — Step 7: Tier 0 results (closed; PD-11 not met)
+
+- **Run (user, Colab T4, commit `2966775`, five sessions; results from
+  `runs/20261029_193129_2966775_step7s5/results_table.txt`, read from Drive):**
+  A3, F0, P0, P1 × seeds 0/1/2, full ARC-Easy, PD-7/PD-10 protocol,
+  deterministic, torch circuit engine; canonical cache hashes verified.
+- **Test (n = 2376), mean ± std over seeds:** F0 0.5824 ± 0.0080, A3 0.4364 ±
+  0.0078, P0 0.4231 ± 0.0112, P1 0.4297 ± 0.0030. Baselines: letter pick
+  0.6953, option likelihood 0.5976, B5 vote 0.2618.
+- **PRIMARY (Holm over 2):** F0 − option likelihood −0.0153 [−0.0318,
+  +0.0013], p Holm 0.0695; F0 − letter pick −0.1129 [−0.1357, −0.0902], p Holm
+  0.0002. **PD-11 not met.** SECONDARY (Holm over 6): every arm below both
+  baselines, p Holm 0.0006 each.
+- **Exploratory:** F0 − A3 +0.1459; P0 − A3 −0.0133 (p 0.051), P1 − A3
+  −0.0067 (p 0.32), withdrawn under the B2 2×std rule; A3's
+  destructive_fraction is saturated at 1.0 (C2), so it is no interference test.
+- **Training dynamics (user report from the logs):** every F0 seed selected
+  epoch 1 and early-stopped at epoch 6; train loss fell while validation
+  fell; clipping on 100 % of steps from epoch 3; F0 destructive_fraction ≈ 0.
+  Protocol not changed.
+- **Deviation recorded:** seeds 0/1/2 instead of the plan's 42/43/44, fixed
+  before the runs.
+- Report: `docs/baseline/baseline_results.md`. Tier 0 closed; B1, B2, B3
+  closed.
+- **Next (proposed, awaiting approval):** validation-only input ablation of
+  the 6 A3 / F0 best checkpoints.

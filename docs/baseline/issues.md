@@ -74,6 +74,15 @@ all are in the Step 6 notebook. Defaults are now `ARC_CONFIG = "ARC-Easy"`,
 16. **B3** Select on validation, report test once · **B7** probe ceiling selection.
 17. **B1, B2, B8, B10** Satisfied by full-split, 3-seed runs with drift/grad-norm logging and a full-split cache gate.
 
+**Tier 0 close-out (2026-10-30).** Step 7 ran at `2966775` on a T4 (user;
+session `20261029_193129_2966775_step7s5`): A3, F0, P0, P1 × seeds 0/1/2 on
+full ARC-Easy, the canonical cache verified, plus the three baselines on test.
+**PD-11 not met:** F0 0.5824 ± 0.0080 vs option likelihood 0.5976 (diff
+−0.0153, CI [−0.0318, +0.0013], Holm p 0.0695) and letter pick 0.6953 (diff
+−0.1129, Holm p 0.0002). Full report: `baseline_results.md`. Closed by the
+runs: B1, B2, B3, B10; B8 budget part (drift analysis open). Seeds 0/1/2
+replace the plan's 42/43/44, fixed before the runs.
+
 **Phase 4 — data**
 18. **D1, D2** Re-measure the hypothesis signal and diversity on the full ARC-Easy cache.
 19. **D3, D4** Prompt sees one option; encoder truncation / single sample.
@@ -502,7 +511,7 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
 ## B. Evaluation problems
 
 ### B1 — Capstone evaluation used n=20 validation / 80 train
-- **Severity:** Critical · **Status:** open
+- **Severity:** Critical · **Status:** **closed 2026-10-30** by the Tier 0 runs (test n = 2376, per-arm 95% half-width 0.0198–0.0199 ≤ 0.021 [DERIVED]; `baseline_results.md`)
 - **Evidence:** `ckpt/qair_v46_config.pt` has `train_samples 80`,
   `val_samples 20`, seed 42. Notebook cell 12 sets `TRAIN_SAMPLES = 80`,
   `VAL_SAMPLES = 20`, `EPOCHS = 8`. Cell 41: `acc=0.5000 95% CI [0.3000, 0.7000]`,
@@ -510,12 +519,12 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
   result**.
 
 ### B2 — One seed
-- **Severity:** High · **Status:** open
+- **Severity:** High · **Status:** **closed 2026-10-30**: 3 seeds (0, 1, 2) per arm, per-arm std reported (`baseline_results.md`)
 - **Evidence:** Every saved run is seed 42 (`qair_v46_config.pt`, `*_s42_*`);
   `config.SEEDS` (`config.py:286`) was not used.
 
 ### B3 — Validation selects the checkpoint and supplies the reported number; test never evaluated
-- **Severity:** High · **Status:** **fixed 2026-10-28** (CPU); closed by the full-split runs
+- **Severity:** High · **Status:** **closed 2026-10-30**: test evaluated once per run from the best-validation checkpoint; mean (best-val − test) over arms +0.0005 ≥ 0 [DERIVED from arm means] (`baseline_results.md`)
 - **Evidence:** `training/train.py:325-329` saves `best` on the max validation
   accuracy. The reported 0.50 is the max of
   `[0.35, 0.35, 0.40, 0.45, 0.40, 0.40, 0.45, 0.50]` (`qair_v46_history.pt`).
@@ -620,7 +629,7 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
   epoch is chosen. 7 mutations each fail ≥ 1 test.
 
 ### B8 — Optimization budget too small for claims about learned scalars
-- **Severity:** High · **Status:** open
+- **Severity:** High · **Status:** budget part **closed 2026-10-30** (full train split, 141 steps/epoch, up to 20 epochs; F0 stopped at epoch 6 in every seed); the drift / gradient-sign analysis of the run histories is **open**
 - **Evidence:** 80 / `BATCH_SIZE` 16 (`config.py:268`) = 5 steps/epoch × 8 epochs
   = **~40 steps**. All learned scalars drifted < 0.01 (`polarity_phase`
   ≤ 0.0059 rad). [HYPOTHESIS] With AdamW at LR 5e-4 / 2e-4 (`config.py:272-273`),
@@ -633,7 +642,7 @@ A5 fix hash after a zsh word-splitting failure skipped the code commit.
   the same code. Its weaknesses are covered by B1–B3.
 
 ### B10 — Cache-quality gate run on capped caches
-- **Severity:** Medium · **Status:** open
+- **Severity:** Medium · **Status:** **closed 2026-10-28**: gate on the full train / validation splits (research log 2026-10-28)
 - **Evidence:** Notebook cell 14: the gate ran on 80 train / 20 val samples.
   Validation `support agreement 0.4000` (n=20) vs train `0.1750` (n=80).
 
