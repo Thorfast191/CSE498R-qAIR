@@ -3,36 +3,25 @@
 Builder: Claude Code · Reviewer: Claude on claude.ai (reads GitHub) · Runs
 and decisions: the user. Updated at the end of every session (CLAUDE.md).
 
-**Last updated:** 2026-10-29 · **PINNED_COMMIT = `2966775`** (Step 7; keep it for all five sessions)
+**Last updated:** 2026-10-30 · Step 7 / Tier 0 **closed** at `2966775` · no Colab run pending
 
-## Canonical Tier 0 cache (ARC-Easy)
-Commit `44fc12a`, session `20261028_135552_44fc12a`, gen_seed 0; manifest `runs/20261028_135552_44fc12a/cache_manifest.json`. sha256 prefixes: train (2251) `4bc0031289a03e4f`, validation (570) `0760535c445ad6dc`, test (2376) `5faa6d62c82612d6`. The Step 7 notebook checks all three before training.
+## Result (full report: `docs/baseline/baseline_results.md`)
+Test n = 2376, 3 seeds: F0 0.5824 ± 0.0080, A3 0.4364, P0 0.4231, P1 0.4297; letter pick **0.6953** (the bar for every later claim), option likelihood 0.5976, B5 vote 0.2618. **PD-11 not met**: F0 − option likelihood −0.0153 (Holm p 0.0695), F0 − letter pick −0.1129 (Holm p 0.0002).
 
 ## Done this session
-| Item | Commit | Tests |
-|---|---|---|
-| E12 closed: T4 1.514 s/step (was 69.9 s), determinism IDENTICAL, torch vs `lightning.qubit` 1.9e-6 | `2966775` | |
-| `scripts/step7_runs.py`, `main.py --cache-dir/--ckpt-dir`, `notebooks/cse498r_step7_baseline.ipynb`; local 5-session dry run incl. a kill + resume | `2966775` | **365 passed, 2 skipped** |
-| Found E13: torch engine raises on Mac MPS (float64); CUDA unaffected | `2966775` | |
+| Item | Commit |
+|---|---|
+| `baseline_results.md` (Observation / Interpretation / Recommendation / Next Experiment; pre-registered predictions held / failed) | `4d68936` |
+| issues.md: Tier 0 close-out; B1, B2, B3 closed, B8 budget part closed, B10 closed; research log entry | `4d68936` |
 
-## Time estimate [DERIVED from 1.514 s/step; 141 steps + validation ≈ 3.6 min/epoch]
-| Session | Runs | Training | With setup (~10 min [ASSUMPTION]) |
-|---|---|---|---|
-| 1 | F0 × seeds 0, 1, 2 | 1.1–3.6 h | **1.3–3.8 h** |
-| 2 | A3 × 3 | 1.1–3.6 h | 1.3–3.8 h |
-| 3 | P0 × 3 | 1.1–3.6 h | 1.3–3.8 h |
-| 4 | P1 × 3 | 1.1–3.6 h | 1.3–3.8 h |
-| 5 | baselines + stats | letter pick ≤ 23 min (upper bound: 2376 × 0.58 s) | ≤ 0.6 h |
-
-Per run: 6 epochs (earliest early stop) = 22 min to 20 epochs = 72 min; test eval adds seconds. Total 5.6–15.8 h of T4. [HYPOTHESIS] A3/P0/P1 cost the same per step as the measured v46 config (same circuit calls); the 1.514 s mean covers only 2 steps.
+No code changed; suite unchanged at 365 passed, 2 skipped.
 
 ## Decisions needed
-None open. Approved 2026-10-29 (reviewer read `2966775`; user): the Step 7 runs, `RUNS_APPROVED = True` for all five sessions. E13 decided: on MPS run the circuit on the CPU; implemented after Step 7.
+1. **Approve the validation-only input ablation** (proposal in the session reply; summary): 6 best checkpoints (A3, F0 × seeds 0/1/2); corruptions H := zeros, H from another question (existing "H rolled across batch"), attack := 0, support := 0, **Q := zeros (new)**, plus the existing cheap ones (noise, H := O, llm_logprob := 0, O := 0, polarity, align); paired item-bootstrap CI of each delta, seeds averaged; `--split test` refused in code. Eval only, ≈ 15 min on Colab including setup [DERIVED / ASSUMPTION]. Recommendation: approve.
+2. E13 (decided: CPU circuit on MPS), after the ablation.
 
-## Colab now — each session
-1. Fresh **T4** runtime; open `notebooks/cse498r_step7_baseline.ipynb` fresh from GitHub `main`.
-2. Cell 0: `PINNED_COMMIT = "2966775"`, `SESSION_NUMBER = 1` (then 2, 3, 4, 5), `RUNS_APPROVED = True`.
-3. Sessions 1–4: run cells **0–6**. Session 5: cells **0–5, 7, 8**.
-4. Cell 4 shows finished runs and `NEXT: session N`. After a disconnect, run 0–6 again with the same number: finished runs are skipped, an interrupted run resumes from its last epoch.
-5. Stop and paste to Claude Code if cell 3, 5 or 6 stops (e.g. `CheckpointMismatchError`, strict determinism); leave the checkpoint files where they are.
-6. Paste after each session: cell 4's status table. After session 5: everything from `RESULTS TABLE` down.
+## Next step
+After approval: implement and test on CPU, add a cell to the Step 7 notebook (reads `step7_2966775/ckpt`), give you the new PINNED_COMMIT. Then T1c (PD-15).
+
+## Colab
+Nothing to run now.
